@@ -1,0 +1,8 @@
+# Binary files
+*.jar binary
+*.png binary
+*.keystore binary
+*.so binary
+
+# Auto detect text files and perform LF normalization
+* text=auto eol=lf

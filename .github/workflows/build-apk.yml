@@ -19,16 +19,29 @@ jobs:
         distribution: 'temurin'
         java-version: '17'
 
-    - name: Fix and Clean Build Environment
+    - name: Fix and Update Gradle Wrapper
       run: |
         rm -f gradle/wrapper/gradle-wrapper.jar
-        gradle wrapper --gradle-version 8.5
-        chmod +x ./gradlew
-        # Hapus semua sisa cache lokal di runner
-        ./gradlew clean
+        gradle wrapper --gradle-version 9.3.1
+
+    - name: Grant execute permission for gradlew
+      run: chmod +x ./gradlew
+
+    - name: Generate debug keystore
+      run: |
+        keytool -genkeypair -v \
+          -keystore debug.keystore \
+          -storepass android \
+          -keypass android \
+          -alias androiddebugkey \
+          -keyalg RSA \
+          -keysize 2048 \
+          -validity 10000 \
+          -dname "CN=Android Debug, O=Android, C=US"
+        ls -l debug.keystore
 
     - name: Build Debug APK
-      run: ./gradlew assembleDebug --no-daemon -Djava.awt.headless=true
+      run: ./gradlew clean assembleDebug -Djava.awt.headless=true --no-daemon
 
     - name: Upload APK Artifact
       uses: actions/upload-artifact@v4

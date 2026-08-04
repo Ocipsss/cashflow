@@ -19,11 +19,6 @@ jobs:
         distribution: 'temurin'
         java-version: '17'
 
-    - name: Fix and Update Gradle Wrapper
-      run: |
-        rm -f gradle/wrapper/gradle-wrapper.jar
-        gradle wrapper --gradle-version 9.3.1
-
     - name: Grant execute permission for gradlew
       run: chmod +x ./gradlew
 

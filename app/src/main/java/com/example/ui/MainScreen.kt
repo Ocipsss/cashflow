@@ -78,22 +78,15 @@ fun MainScreen(
                                 modifier = Modifier.size(22.dp)
                             )
                         }
-                        Column {
-                            Text(
-                                text = "Dompet Digital & Keuangan",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold
-                            )
-                            Text(
-                                text = when (uiState.selectedTab) {
-                                    0 -> "Riwayat Transaksi"
-                                    1 -> "Dashboard Utama"
-                                    else -> "Pengaturan Aplikasi"
-                                },
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
+                        Text(
+                            text = when (uiState.selectedTab) {
+                                0 -> "Riwayat Transaksi"
+                                1 -> "Beranda Utama"
+                                else -> "Pengaturan Aplikasi"
+                            },
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Bold
+                        )
                     }
                 },
                 actions = {
@@ -157,22 +150,22 @@ fun MainScreen(
                 NavigationBarItem(
                     selected = uiState.selectedTab == 0,
                     onClick = { viewModel.selectTab(0) },
-                    icon = { Icon(Icons.Default.History, contentDescription = "History") },
-                    label = { Text("History") },
+                    icon = { Icon(Icons.Default.History, contentDescription = "Riwayat") },
+                    label = { Text("Riwayat") },
                     modifier = Modifier.testTag("nav_item_history")
                 )
                 NavigationBarItem(
                     selected = uiState.selectedTab == 1,
                     onClick = { viewModel.selectTab(1) },
-                    icon = { Icon(Icons.Default.Dashboard, contentDescription = "Dashboard") },
-                    label = { Text("Dashboard") },
+                    icon = { Icon(Icons.Default.Dashboard, contentDescription = "Beranda") },
+                    label = { Text("Beranda") },
                     modifier = Modifier.testTag("nav_item_dashboard")
                 )
                 NavigationBarItem(
                     selected = uiState.selectedTab == 2,
                     onClick = { viewModel.selectTab(2) },
-                    icon = { Icon(Icons.Default.Settings, contentDescription = "Setting") },
-                    label = { Text("Setting") },
+                    icon = { Icon(Icons.Default.Settings, contentDescription = "Pengaturan") },
+                    label = { Text("Pengaturan") },
                     modifier = Modifier.testTag("nav_item_setting")
                 )
             }
@@ -366,7 +359,7 @@ fun TotalBalanceCard(
                             modifier = Modifier.size(20.dp)
                         )
                         Text(
-                            text = "TOTAL SALDO ALL WALLETS",
+                            text = "TOTAL SEMUA DOMPET",
                             style = MaterialTheme.typography.labelMedium,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.85f),
@@ -1133,7 +1126,7 @@ fun HistoryTab(
                     .fillMaxWidth()
                     .testTag("search_history_input"),
                 placeholder = {
-                    Text("Cari judul, wallet, kategori, atau tanggal...")
+                    Text("cari riwayat...")
                 },
                 leadingIcon = {
                     Icon(
@@ -1350,7 +1343,7 @@ fun SettingsTab(
                             }
                             Column {
                                 Text(
-                                    text = "Kelola Dompet Digital",
+                                    text = "Kelola Dompet",
                                     style = MaterialTheme.typography.titleMedium,
                                     fontWeight = FontWeight.Bold
                                 )
@@ -3368,10 +3361,6 @@ fun GoogleSyncDialog(
     onLogin: (String, String) -> Unit,
     onLogout: () -> Unit
 ) {
-    var showSwitchAccountInput by remember { mutableStateOf(!googleUser.isLoggedIn) }
-    var inputEmail by remember { mutableStateOf(if (googleUser.email.isNotBlank()) googleUser.email else "pratacips@gmail.com") }
-    var inputName by remember { mutableStateOf(if (googleUser.name.isNotBlank()) googleUser.name else "Google User") }
-
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false)
@@ -3464,32 +3453,18 @@ fun GoogleSyncDialog(
                                     }
                                 }
 
-                                Row(
+                                OutlinedButton(
+                                    onClick = onLogout,
                                     modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    shape = RoundedCornerShape(12.dp),
+                                    colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error)
                                 ) {
-                                    OutlinedButton(
-                                        onClick = { showSwitchAccountInput = !showSwitchAccountInput },
-                                        modifier = Modifier.weight(1f),
-                                        shape = RoundedCornerShape(12.dp)
-                                    ) {
-                                        Icon(Icons.Default.AccountCircle, contentDescription = null, modifier = Modifier.size(16.dp))
-                                        Spacer(Modifier.width(6.dp))
-                                        Text("Ganti Akun")
-                                    }
-                                    OutlinedButton(
-                                        onClick = onLogout,
-                                        modifier = Modifier.weight(1f),
-                                        shape = RoundedCornerShape(12.dp),
-                                        colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error)
-                                    ) {
-                                        Icon(Icons.Default.Logout, contentDescription = null, modifier = Modifier.size(16.dp))
-                                        Spacer(Modifier.width(6.dp))
-                                        Text("Keluar")
-                                    }
+                                    Icon(Icons.Default.Logout, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Spacer(Modifier.width(6.dp))
+                                    Text("Keluar dari Akun Google")
                                 }
                             } else {
-                                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                                     Row(
                                         verticalAlignment = Alignment.CenterVertically,
                                         horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -3517,52 +3492,16 @@ fun GoogleSyncDialog(
 
                                     Button(
                                         onClick = {
-                                            onLogin("pratacips@gmail.com", "Google User")
+                                            onLogin("user@gmail.com", "Google User")
                                         },
                                         modifier = Modifier
                                             .fillMaxWidth()
-                                            .testTag("quick_login_google_button"),
+                                            .testTag("login_google_account_button"),
                                         shape = RoundedCornerShape(12.dp)
                                     ) {
                                         Icon(Icons.Default.AccountCircle, contentDescription = null, modifier = Modifier.size(18.dp))
                                         Spacer(Modifier.width(8.dp))
-                                        Text("Masuk dengan pratacips@gmail.com")
-                                    }
-                                }
-                            }
-
-                            if (showSwitchAccountInput) {
-                                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    HorizontalDivider(color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.2f))
-                                    Text(
-                                        text = "Masuk dengan Akun Google Lain:",
-                                        style = MaterialTheme.typography.labelMedium,
-                                        fontWeight = FontWeight.Bold,
-                                        color = MaterialTheme.colorScheme.onPrimaryContainer
-                                    )
-                                    OutlinedTextField(
-                                        value = inputName,
-                                        onValueChange = { inputName = it },
-                                        label = { Text("Nama Pengguna") },
-                                        singleLine = true,
-                                        modifier = Modifier.fillMaxWidth()
-                                    )
-                                    OutlinedTextField(
-                                        value = inputEmail,
-                                        onValueChange = { inputEmail = it },
-                                        label = { Text("Email Google Account") },
-                                        singleLine = true,
-                                        modifier = Modifier.fillMaxWidth()
-                                    )
-                                    Button(
-                                        onClick = {
-                                            onLogin(inputEmail, inputName)
-                                            showSwitchAccountInput = false
-                                        },
-                                        modifier = Modifier.fillMaxWidth(),
-                                        shape = RoundedCornerShape(10.dp)
-                                    ) {
-                                        Text("Hubungkan Akun Google Ini")
+                                        Text("Hubungkan Akun Google")
                                     }
                                 }
                             }
@@ -3570,146 +3509,136 @@ fun GoogleSyncDialog(
                     }
                 }
 
-                // 2. Realtime Controller Card
-                item {
-                    Card(
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(20.dp),
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
-                    ) {
-                        Column(
-                            modifier = Modifier.padding(18.dp),
-                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                if (googleUser.isLoggedIn) {
+                    // 2. Realtime Controller Card
+                    item {
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(20.dp),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
                         ) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        text = "Sync Realtime Multi-Device",
-                                        style = MaterialTheme.typography.titleSmall,
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                    Text(
-                                        text = "Terhubung otomatis antar Device 1 & Device 2",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-                                Switch(
-                                    checked = syncState.isRealtimeEnabled,
-                                    onCheckedChange = onToggleRealtime,
-                                    modifier = Modifier.testTag("toggle_realtime_sync_switch")
-                                )
-                            }
-
-                            HorizontalDivider()
-
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    text = "Status: ${syncState.syncStatusMessage}",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    fontWeight = FontWeight.SemiBold
-                                )
-                                Text(
-                                    text = "Terakhir: ${syncState.lastSyncTime}",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-
-                            Button(
-                                onClick = onForceSync,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .testTag("force_sync_button"),
-                                shape = RoundedCornerShape(12.dp)
-                            ) {
-                                Icon(Icons.Default.Sync, contentDescription = null, modifier = Modifier.size(18.dp))
-                                Spacer(Modifier.width(8.dp))
-                                Text("Paksa Sinkronkan Data Sekarang")
-                            }
-                        }
-                    }
-                }
-
-                // 3. Perangkat Terhubung (Active Devices)
-                item {
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text(
-                            text = "Perangkat Terhubung (${syncState.activeDevices.size})",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold
-                        )
-                        syncState.activeDevices.forEach { dev ->
-                            Card(
-                                modifier = Modifier.fillMaxWidth(),
-                                shape = RoundedCornerShape(12.dp),
-                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                            Column(
+                                modifier = Modifier.padding(18.dp),
+                                verticalArrangement = Arrangement.spacedBy(12.dp)
                             ) {
                                 Row(
-                                    modifier = Modifier.padding(12.dp),
+                                    modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = "Sync Realtime Multi-Device",
+                                            style = MaterialTheme.typography.titleSmall,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                        Text(
+                                            text = "Terhubung otomatis antar Device 1 & Device 2",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                    Switch(
+                                        checked = syncState.isRealtimeEnabled,
+                                        onCheckedChange = onToggleRealtime,
+                                        modifier = Modifier.testTag("toggle_realtime_sync_switch")
+                                    )
+                                }
+
+                                HorizontalDivider()
+
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = "Status: ${syncState.syncStatusMessage}",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                    Text(
+                                        text = "Terakhir: ${syncState.lastSyncTime}",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    // 3. Perangkat Terhubung (Active Devices)
+                    item {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text(
+                                text = "Perangkat Terhubung (${syncState.activeDevices.size})",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold
+                            )
+                            syncState.activeDevices.forEach { dev ->
+                                Card(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(12.dp),
+                                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                                ) {
                                     Row(
-                                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                        modifier = Modifier.padding(12.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        Icon(
-                                            imageVector = Icons.Default.Devices,
-                                            contentDescription = null,
-                                            tint = MaterialTheme.colorScheme.primary
-                                        )
-                                        Text(text = dev, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
-                                    }
-                                    Surface(
-                                        color = Color(0xFFE8F5E9),
-                                        shape = RoundedCornerShape(6.dp)
-                                    ) {
-                                        Text(
-                                            text = "Online 🟢",
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = Color(0xFF2E7D32),
-                                            fontWeight = FontWeight.Bold,
-                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
-                                        )
+                                        Row(
+                                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Devices,
+                                                contentDescription = null,
+                                                tint = MaterialTheme.colorScheme.primary
+                                            )
+                                            Text(text = dev, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                                        }
+                                        Surface(
+                                            color = Color(0xFFE8F5E9),
+                                            shape = RoundedCornerShape(6.dp)
+                                        ) {
+                                            Text(
+                                                text = "Online 🟢",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = Color(0xFF2E7D32),
+                                                fontWeight = FontWeight.Bold,
+                                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                                            )
+                                        }
                                     }
                                 }
                             }
                         }
                     }
-                }
 
-                // 4. Activity Logs
-                item {
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text(
-                            text = "Log Sinkronisasi Realtime",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Card(
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(12.dp),
-                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
-                        ) {
-                            Column(
-                                modifier = Modifier.padding(12.dp),
-                                verticalArrangement = Arrangement.spacedBy(4.dp)
+                    // 4. Activity Logs
+                    item {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text(
+                                text = "Log Sinkronisasi Realtime",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Card(
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(12.dp),
+                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
                             ) {
-                                logs.take(6).forEach { log ->
-                                    Text(
-                                        text = "• $log",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
+                                Column(
+                                    modifier = Modifier.padding(12.dp),
+                                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    logs.take(6).forEach { log ->
+                                        Text(
+                                            text = "• $log",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
                                 }
                             }
                         }

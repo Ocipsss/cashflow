@@ -90,36 +90,14 @@ data class MainUiState(
     val counter: Int = 0,
     val isDarkThemeOverride: Boolean = false,
     val selectedTab: Int = 1, // Default to Dashboard (index 1)
-    val wallets: List<Wallet> = listOf(
-        Wallet("w1", "BCA Utama", 14_250_000, "7820192812", "Bank", "bank"),
-        Wallet("w2", "Gopay", 850_000, "08123456789", "E-Wallet", "phone"),
-        Wallet("w3", "Kas Tunai", 500_000, "-", "Cash", "cash"),
-        Wallet("w4", "Mandiri Tabungan", 8_400_000, "13200812399", "Bank", "bank"),
-        Wallet("w5", "OVO Cash", 320_000, "08123456789", "E-Wallet", "phone")
-    ),
-    val debts: List<DebtItem> = listOf(
-        DebtItem("d1", "w1", "Cicilan Gadget", "Wallet Mandiri", 2_500_000, "15 Aug 2026"),
-        DebtItem("d2", "w1", "Pinjam Modal Usaha", "BCA Rekening Mitra", 1_000_000, "20 Aug 2026"),
-        DebtItem("d3", "w2", "Paylater Gopay", "Gopay Corporate", 150_000, "10 Aug 2026"),
-        DebtItem("d4", "w4", "Utang Pembelian Alat", "Wallet Kas Tunai", 500_000, "25 Aug 2026")
-    ),
-    val receivables: List<ReceivableItem> = listOf(
-        ReceivableItem("r1", "w1", "Pinjaman Budi", "Wallet Tunai Budi", 750_000, "12 Aug 2026"),
-        ReceivableItem("r2", "w2", "Reimburse Kantor", "Wallet Gopay Kantor", 300_000, "08 Aug 2026"),
-        ReceivableItem("r3", "w4", "Piutang Proyek Freelance", "Wallet BCA Klien", 3_500_000, "30 Aug 2026")
-    ),
-    val transactions: List<TransactionItem> = listOf(
-        TransactionItem("t1", "w1", "BCA Utama", "Transfer Gaji Masuk", "Pemasukan", 12_000_000, TransactionType.INCOME, "03 Aug 2026 09:30"),
-        TransactionItem("t2", "w2", "Gopay", "Makan Siang Resto", "Makanan & Minuman", 75_000, TransactionType.EXPENSE, "03 Aug 2026 12:15"),
-        TransactionItem("t3", "w1", "BCA Utama", "Top Up Gopay", "Transfer", 200_000, TransactionType.TRANSFER, "02 Aug 2026 18:45"),
-        TransactionItem("t4", "w3", "Kas Tunai", "Beli Bahan Makanan", "Belanja", 120_000, TransactionType.EXPENSE, "02 Aug 2026 10:20"),
-        TransactionItem("t5", "w4", "Mandiri Tabungan", "Pembayaran Tagihan Listrik", "Utilitas", 450_000, TransactionType.EXPENSE, "01 Aug 2026 14:00"),
-        TransactionItem("t6", "w1", "BCA Utama", "Pembayaran Project A", "Pemasukan", 2_500_000, TransactionType.INCOME, "31 Jul 2026 16:30")
-    ),
+    val wallets: List<Wallet> = emptyList(),
+    val debts: List<DebtItem> = emptyList(),
+    val receivables: List<ReceivableItem> = emptyList(),
+    val transactions: List<TransactionItem> = emptyList(),
     val selectedWalletDetail: Wallet? = null,
     val searchQuery: String = "",
-    val incomeCategories: List<String> = listOf("Gaji", "Bonus", "Proyek Freelance", "Investasi", "Penjualan", "Lainnya"),
-    val expenseCategories: List<String> = listOf("Makanan & Minuman", "Belanja", "Utilitas", "Transportasi", "Hiburan", "Kesehatan", "Pendidikan", "Lainnya"),
+    val incomeCategories: List<String> = emptyList(),
+    val expenseCategories: List<String> = emptyList(),
     val architectureFeatures: List<ArchitectureFeature> = listOf(
         ArchitectureFeature(
             title = "Jetpack Compose",
@@ -321,7 +299,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun loginGoogleAccount(email: String, name: String) {
-        val cleanEmail = email.trim().lowercase().ifBlank { "pratacips@gmail.com" }
+        val cleanEmail = email.trim().lowercase().ifBlank { "user@gmail.com" }
         val cleanName = name.ifBlank {
             if (cleanEmail.contains("@")) cleanEmail.substringBefore("@").replaceFirstChar { it.uppercase() } else "Google User"
         }
@@ -1072,8 +1050,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     transactions = txList,
                     debts = debtsList,
                     receivables = recList,
-                    incomeCategories = if (root.has("incomeCategories") && incCatList.isNotEmpty()) incCatList else state.incomeCategories,
-                    expenseCategories = if (root.has("expenseCategories") && expCatList.isNotEmpty()) expCatList else state.expenseCategories,
+                    incomeCategories = if (root.has("incomeCategories")) incCatList else state.incomeCategories,
+                    expenseCategories = if (root.has("expenseCategories")) expCatList else state.expenseCategories,
                     logs = listOf("Database berhasil di-restore dari data JSON.") + state.logs
                 )
             }
@@ -1099,7 +1077,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 transactions = emptyList(),
                 debts = emptyList(),
                 receivables = emptyList(),
-                logs = listOf("Database telah di-reset. Semua data sampel telah dibersihkan.")
+                incomeCategories = emptyList(),
+                expenseCategories = emptyList(),
+                logs = listOf("Database telah di-reset. Semua data sampel & template kategori telah dibersihkan.")
             )
         }
         saveStateToPrefs()

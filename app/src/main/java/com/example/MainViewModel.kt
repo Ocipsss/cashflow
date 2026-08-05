@@ -15,25 +15,6 @@ import org.json.JSONObject
 import java.text.NumberFormat
 import java.util.Locale
 
-data class GoogleUser(
-    val email: String = "",
-    val name: String = "",
-    val photoUrl: String = "",
-    val isLoggedIn: Boolean = false,
-    val deviceName: String = "Device Utama (Android)",
-    val deviceId: String = "DEV-8921"
-)
-
-data class RealtimeSyncState(
-    val isRealtimeEnabled: Boolean = true,
-    val isSyncing: Boolean = false,
-    val lastSyncTime: String = "Baru Saja",
-    val lastSyncTimestamp: Long = System.currentTimeMillis(),
-    val activeDevices: List<String> = listOf("Android Device 1 (Aktif)", "Tablet / HP 2 (Terhubung)"),
-    val syncStatusMessage: String = "Terhubung & Realtime Sync Firestore Aktif",
-    val cloudVersion: Int = 1
-)
-
 data class Wallet(
     val id: String,
     val name: String,
@@ -84,9 +65,6 @@ data class ArchitectureFeature(
 )
 
 data class MainUiState(
-    val googleUser: GoogleUser = GoogleUser(),
-    val syncState: RealtimeSyncState = RealtimeSyncState(),
-    val showGoogleSyncDialog: Boolean = false,
     val counter: Int = 0,
     val isDarkThemeOverride: Boolean = false,
     val selectedTab: Int = 1, // Default to Dashboard (index 1)
@@ -105,14 +83,9 @@ data class MainUiState(
             status = "Aktif"
         ),
         ArchitectureFeature(
-            title = "Firebase Cloud Firestore & Auth",
-            description = "Autentikasi Google Sign-In & database real-time multi-device terisolasi berbasis UID (users/{uid}/transactions).",
-            status = "Terhubung"
-        ),
-        ArchitectureFeature(
-            title = "Firestore Offline Persistence",
-            description = "Dukungan penuh penggunaan offline & sinkronisasi otomatis saat terhubung internet via addSnapshotListener.",
-            status = "Terintegrasi"
+            title = "Penyimpanan Lokal (SharedPreferences & JSON)",
+            description = "Persistensi data lokal yang cepat, efisien, dan aman tanpa memerlukan koneksi internet.",
+            status = "Aktif"
         ),
         ArchitectureFeature(
             title = "StateFlow & ViewModel",
@@ -139,87 +112,17 @@ fun getCurrentFormattedDate(): String {
 class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private val prefs = application.getSharedPreferences("base_app_prefs", Context.MODE_PRIVATE)
-    private val firestoreRepo = FirestoreRepository(application)
 
     private val _uiState = MutableStateFlow(MainUiState())
     val uiState: StateFlow<MainUiState> = _uiState.asStateFlow()
 
     init {
         loadStateFromPrefs()
-        if (_uiState.value.googleUser.isLoggedIn) {
-            startFirestoreSync()
-        }
-    }
-
-    private fun getActiveUid(): String {
-        val user = _uiState.value.googleUser
-        return firestoreRepo.getCurrentUserUid()
-            ?: if (user.email.isNotBlank()) user.email.replace(".", "_").replace("@", "_at_") else "user_default"
-    }
-
-    private fun startFirestoreSync() {
-        val user = _uiState.value.googleUser
-        if (!user.isLoggedIn) return
-        val uid = getActiveUid()
-
-        firestoreRepo.startRealtimeSync(
-            uid = uid,
-            onTransactionsUpdated = { list ->
-                _uiState.update { state ->
-                    state.copy(
-                        transactions = list,
-                        syncState = state.syncState.copy(
-                            lastSyncTime = getCurrentFormattedDate(),
-                            syncStatusMessage = "Terhubung & Firestore Realtime Sync Aktif"
-                        )
-                    )
-                }
-            },
-            onWalletsUpdated = { list ->
-                _uiState.update { it.copy(wallets = list) }
-            },
-            onDebtsUpdated = { list ->
-                _uiState.update { it.copy(debts = list) }
-            },
-            onReceivablesUpdated = { list ->
-                _uiState.update { it.copy(receivables = list) }
-            },
-            onCategoriesUpdated = { inc, exp ->
-                _uiState.update { it.copy(incomeCategories = inc, expenseCategories = exp) }
-            }
-        )
-    }
-
-    private fun syncAllToFirestore() {
-        val state = _uiState.value
-        if (!state.googleUser.isLoggedIn) return
-        val uid = getActiveUid()
-
-        viewModelScope.launch {
-            state.transactions.forEach { firestoreRepo.saveTransaction(uid, it) }
-            state.wallets.forEach { firestoreRepo.saveWallet(uid, it) }
-            state.debts.forEach { firestoreRepo.saveDebt(uid, it) }
-            state.receivables.forEach { firestoreRepo.saveReceivable(uid, it) }
-            firestoreRepo.saveCategories(uid, state.incomeCategories, state.expenseCategories)
-        }
     }
 
     private fun loadStateFromPrefs() {
         val savedJson = prefs.getString("saved_data_json", null)
         val savedDarkTheme = prefs.getBoolean("is_dark_theme", false)
-        val savedEmail = prefs.getString("google_user_email", "") ?: ""
-        val savedName = prefs.getString("google_user_name", "") ?: ""
-        val savedIsLoggedIn = prefs.getBoolean("google_user_is_logged_in", false)
-
-        _uiState.update { state ->
-            state.copy(
-                googleUser = state.googleUser.copy(
-                    email = savedEmail,
-                    name = savedName,
-                    isLoggedIn = savedIsLoggedIn
-                )
-            )
-        }
 
         if (!savedJson.isNullOrBlank()) {
             val success = restoreDatabaseFromJsonInternal(savedJson)
@@ -239,89 +142,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             prefs.edit()
                 .putString("saved_data_json", jsonStr)
                 .putBoolean("is_dark_theme", state.isDarkThemeOverride)
-                .putString("google_user_email", state.googleUser.email)
-                .putString("google_user_name", state.googleUser.name)
-                .putBoolean("google_user_is_logged_in", state.googleUser.isLoggedIn)
                 .apply()
-
-            if (state.googleUser.isLoggedIn && state.syncState.isRealtimeEnabled) {
-                syncAllToFirestore()
-            }
         } catch (e: Exception) {
             e.printStackTrace()
         }
-    }
-
-    fun forceCloudSync() {
-        saveStateToPrefs()
-        if (_uiState.value.googleUser.isLoggedIn) {
-            startFirestoreSync()
-            syncAllToFirestore()
-        }
-    }
-
-    fun toggleGoogleSyncDialog(show: Boolean) {
-        _uiState.update { it.copy(showGoogleSyncDialog = show) }
-    }
-
-    fun toggleRealtimeSync(enabled: Boolean) {
-        _uiState.update { state ->
-            state.copy(
-                syncState = state.syncState.copy(
-                    isRealtimeEnabled = enabled,
-                    syncStatusMessage = if (enabled) "Terhubung & Realtime Sync Firestore Aktif" else "Realtime Sync Dinonaktifkan"
-                ),
-                logs = listOf(if (enabled) "🟢 Realtime Sync Firestore diaktifkan." else "🟠 Realtime Sync Firestore dinonaktifkan.") + state.logs
-            )
-        }
-        if (enabled && _uiState.value.googleUser.isLoggedIn) {
-            startFirestoreSync()
-            syncAllToFirestore()
-        } else {
-            firestoreRepo.stopRealtimeSync()
-        }
-    }
-
-    fun loginGoogleAccount(email: String, name: String) {
-        val cleanEmail = email.trim().lowercase().ifBlank { "user@gmail.com" }
-        val cleanName = name.ifBlank {
-            if (cleanEmail.contains("@")) cleanEmail.substringBefore("@").replaceFirstChar { it.uppercase() } else "Google User"
-        }
-
-        _uiState.update { state ->
-            state.copy(
-                googleUser = state.googleUser.copy(
-                    email = cleanEmail,
-                    name = cleanName,
-                    isLoggedIn = true
-                ),
-                syncState = state.syncState.copy(
-                    isRealtimeEnabled = true,
-                    syncStatusMessage = "Terhubung & Firestore Realtime Sync Aktif"
-                ),
-                logs = listOf("🔑 Login Google Account berhasil: $cleanEmail") + state.logs
-            )
-        }
-
-        startFirestoreSync()
-        saveStateToPrefs()
-    }
-
-    fun logoutGoogleAccount() {
-        firestoreRepo.stopRealtimeSync()
-        _uiState.update { state ->
-            state.copy(
-                googleUser = state.googleUser.copy(
-                    isLoggedIn = false
-                ),
-                syncState = state.syncState.copy(
-                    isRealtimeEnabled = false,
-                    syncStatusMessage = "Sinkronisasi Nonaktif (Belum Login)"
-                ),
-                logs = listOf("🔒 Keluar dari Google Account. Multi-device sync dinonaktifkan.") + state.logs
-            )
-        }
-        saveStateToPrefs()
     }
 
     fun selectWalletForDetail(wallet: Wallet?) {
@@ -380,11 +204,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             )
         }
 
-        if (_uiState.value.googleUser.isLoggedIn) {
-            val uid = getActiveUid()
-            createdTx?.let { firestoreRepo.saveTransaction(uid, it) }
-            updatedTargetWallet?.let { firestoreRepo.saveWallet(uid, it) }
-        }
         saveStateToPrefs()
     }
 
@@ -488,13 +307,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
 
-        if (_uiState.value.googleUser.isLoggedIn) {
-            val uid = getActiveUid()
-            createdTx?.let { firestoreRepo.saveTransaction(uid, it) }
-            _uiState.value.wallets.forEach { firestoreRepo.saveWallet(uid, it) }
-            _uiState.value.debts.forEach { firestoreRepo.saveDebt(uid, it) }
-            _uiState.value.receivables.forEach { firestoreRepo.saveReceivable(uid, it) }
-        }
         saveStateToPrefs()
     }
 
@@ -575,13 +387,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             )
         }
 
-        if (_uiState.value.googleUser.isLoggedIn) {
-            val uid = getActiveUid()
-            createdTx?.let { firestoreRepo.saveTransaction(uid, it) }
-            _uiState.value.wallets.forEach { firestoreRepo.saveWallet(uid, it) }
-            _uiState.value.debts.forEach { firestoreRepo.saveDebt(uid, it) }
-            _uiState.value.receivables.forEach { firestoreRepo.saveReceivable(uid, it) }
-        }
         saveStateToPrefs()
     }
 
@@ -600,9 +405,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 logs = listOf("Wallet baru '${newWallet.name}' berhasil ditambahkan.") + state.logs
             )
         }
-        if (_uiState.value.googleUser.isLoggedIn) {
-            firestoreRepo.saveWallet(getActiveUid(), newWallet)
-        }
         saveStateToPrefs()
     }
 
@@ -615,18 +417,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     ) {
         val nameTrimmed = newName.trim()
         if (nameTrimmed.isBlank()) return
-        var editedW: Wallet? = null
         _uiState.update { state ->
             val updatedWallets = state.wallets.map { w ->
                 if (w.id == id) {
-                    val updated = w.copy(
+                    w.copy(
                         name = nameTrimmed,
                         balance = newBalance,
                         accountNumber = newAccountNumber.ifBlank { "-" },
                         type = newType
                     )
-                    editedW = updated
-                    updated
                 } else w
             }
             val updatedTransactions = state.transactions.map { t ->
@@ -642,9 +441,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 selectedWalletDetail = updatedSelectedWallet,
                 logs = listOf("Wallet '$nameTrimmed' berhasil diperbarui.") + state.logs
             )
-        }
-        if (_uiState.value.googleUser.isLoggedIn) {
-            editedW?.let { firestoreRepo.saveWallet(getActiveUid(), it) }
         }
         saveStateToPrefs()
     }
@@ -662,9 +458,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 logs = listOf("Wallet '$walletName' berhasil dihapus.") + state.logs
             )
         }
-        if (_uiState.value.googleUser.isLoggedIn) {
-            firestoreRepo.deleteWallet(getActiveUid(), id)
-        }
         saveStateToPrefs()
     }
 
@@ -677,9 +470,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 incomeCategories = state.incomeCategories + trimmed,
                 logs = listOf("Kategori Pemasukan '$trimmed' berhasil ditambahkan.") + state.logs
             )
-        }
-        if (_uiState.value.googleUser.isLoggedIn) {
-            firestoreRepo.saveCategories(getActiveUid(), _uiState.value.incomeCategories, _uiState.value.expenseCategories)
         }
         saveStateToPrefs()
     }
@@ -702,9 +492,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 logs = listOf("Kategori Pemasukan '$oldCategory' diubah menjadi '$trimmed'.") + state.logs
             )
         }
-        if (_uiState.value.googleUser.isLoggedIn) {
-            firestoreRepo.saveCategories(getActiveUid(), _uiState.value.incomeCategories, _uiState.value.expenseCategories)
-        }
         saveStateToPrefs()
     }
 
@@ -715,9 +502,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 incomeCategories = updatedCategories,
                 logs = listOf("Kategori Pemasukan '$categoryName' berhasil dihapus.") + state.logs
             )
-        }
-        if (_uiState.value.googleUser.isLoggedIn) {
-            firestoreRepo.saveCategories(getActiveUid(), _uiState.value.incomeCategories, _uiState.value.expenseCategories)
         }
         saveStateToPrefs()
     }
@@ -731,9 +515,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 expenseCategories = state.expenseCategories + trimmed,
                 logs = listOf("Kategori Pengeluaran '$trimmed' berhasil ditambahkan.") + state.logs
             )
-        }
-        if (_uiState.value.googleUser.isLoggedIn) {
-            firestoreRepo.saveCategories(getActiveUid(), _uiState.value.incomeCategories, _uiState.value.expenseCategories)
         }
         saveStateToPrefs()
     }
@@ -756,9 +537,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 logs = listOf("Kategori Pengeluaran '$oldCategory' diubah menjadi '$trimmed'.") + state.logs
             )
         }
-        if (_uiState.value.googleUser.isLoggedIn) {
-            firestoreRepo.saveCategories(getActiveUid(), _uiState.value.incomeCategories, _uiState.value.expenseCategories)
-        }
         saveStateToPrefs()
     }
 
@@ -769,9 +547,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 expenseCategories = updatedCategories,
                 logs = listOf("Kategori Pengeluaran '$categoryName' berhasil dihapus.") + state.logs
             )
-        }
-        if (_uiState.value.googleUser.isLoggedIn) {
-            firestoreRepo.saveCategories(getActiveUid(), _uiState.value.incomeCategories, _uiState.value.expenseCategories)
         }
         saveStateToPrefs()
     }
@@ -885,11 +660,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 logs = listOf("Transaksi '${newTitle.trim()}' berhasil diperbarui.") + state.logs
             )
         }
-        if (_uiState.value.googleUser.isLoggedIn) {
-            val uid = getActiveUid()
-            editedTx?.let { firestoreRepo.saveTransaction(uid, it) }
-            _uiState.value.wallets.forEach { firestoreRepo.saveWallet(uid, it) }
-        }
         saveStateToPrefs()
     }
 
@@ -914,11 +684,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 transactions = updatedTransactions,
                 logs = listOf("Transaksi '${tx.title}' (${formatRupiah(tx.amount)}) berhasil dihapus.") + state.logs
             )
-        }
-        if (_uiState.value.googleUser.isLoggedIn) {
-            val uid = getActiveUid()
-            firestoreRepo.deleteTransaction(uid, id)
-            _uiState.value.wallets.forEach { firestoreRepo.saveWallet(uid, it) }
         }
         saveStateToPrefs()
     }
@@ -1131,9 +896,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 expenseCategories = emptyList(),
                 logs = listOf("Database telah di-reset. Semua data sampel & template kategori telah dibersihkan.")
             )
-        }
-        if (_uiState.value.googleUser.isLoggedIn) {
-            syncAllToFirestore()
         }
         saveStateToPrefs()
     }

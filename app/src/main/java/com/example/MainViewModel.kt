@@ -3,7 +3,6 @@ package com.example
 import android.app.Application
 import android.content.Context
 import androidx.lifecycle.AndroidViewModel
-import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -31,7 +30,7 @@ data class RealtimeSyncState(
     val lastSyncTime: String = "Baru Saja",
     val lastSyncTimestamp: Long = System.currentTimeMillis(),
     val activeDevices: List<String> = listOf("Android Device 1 (Aktif)", "Tablet / HP 2 (Terhubung)"),
-    val syncStatusMessage: String = "Terhubung & Realtime Sync Aktif",
+    val syncStatusMessage: String = "Terhubung & Realtime Sync Firestore Aktif",
     val cloudVersion: Int = 1
 )
 
@@ -48,7 +47,7 @@ data class DebtItem(
     val id: String,
     val walletId: String,
     val title: String,
-    val targetWalletName: String,
+    val targetWalletName: String = "",
     val amount: Long,
     val dueDate: String = ""
 )
@@ -57,7 +56,7 @@ data class ReceivableItem(
     val id: String,
     val walletId: String,
     val title: String,
-    val sourceWalletName: String,
+    val sourceWalletName: String = "",
     val amount: Long,
     val dueDate: String = ""
 )
@@ -81,12 +80,13 @@ data class TransactionItem(
 data class ArchitectureFeature(
     val title: String,
     val description: String,
-    val iconName: String,
-    val status: String,
-    val isEnabled: Boolean = true
+    val status: String
 )
 
 data class MainUiState(
+    val googleUser: GoogleUser = GoogleUser(),
+    val syncState: RealtimeSyncState = RealtimeSyncState(),
+    val showGoogleSyncDialog: Boolean = false,
     val counter: Int = 0,
     val isDarkThemeOverride: Boolean = false,
     val selectedTab: Int = 1, // Default to Dashboard (index 1)
@@ -101,97 +101,106 @@ data class MainUiState(
     val architectureFeatures: List<ArchitectureFeature> = listOf(
         ArchitectureFeature(
             title = "Jetpack Compose",
-            description = "Declarative UI framework with modern Material Design 3 components.",
-            iconName = "brush",
-            status = "Ready"
+            description = "UI deklaratif berbasis Material Design 3 yang modern dan responsif.",
+            status = "Aktif"
         ),
         ArchitectureFeature(
-            title = "Kotlin Coroutines & Flow",
-            description = "Asynchronous, non-blocking state management with MutableStateFlow.",
-            iconName = "sync",
-            status = "Active"
+            title = "Firebase Cloud Firestore & Auth",
+            description = "Autentikasi Google Sign-In & database real-time multi-device terisolasi berbasis UID (users/{uid}/transactions).",
+            status = "Terhubung"
         ),
         ArchitectureFeature(
-            title = "Edge-to-Edge Design",
-            description = "Full-bleed immersive layout with dynamic safe area inset handling.",
-            iconName = "screen",
-            status = "Enabled"
+            title = "Firestore Offline Persistence",
+            description = "Dukungan penuh penggunaan offline & sinkronisasi otomatis saat terhubung internet via addSnapshotListener.",
+            status = "Terintegrasi"
         ),
         ArchitectureFeature(
-            title = "Room Database Ready",
-            description = "KSP & Room dependencies configured for local persistent storage.",
-            iconName = "database",
-            status = "Configured"
+            title = "StateFlow & ViewModel",
+            description = "Manajemen state terpusat yang reaktif dengan Coroutines.",
+            status = "Aktif"
         )
     ),
-    val logs: List<String> = listOf("Aplikasi dasar berhasil diinisialisasi."),
-    val googleUser: GoogleUser = GoogleUser(),
-    val syncState: RealtimeSyncState = RealtimeSyncState(),
-    val showGoogleSyncDialog: Boolean = false
+    val logs: List<String> = listOf("Aplikasi dasar berhasil diinisialisasi.")
 ) {
-    val totalBalance: Long
-        get() = wallets.sumOf { it.balance }
+    val totalBalance: Long get() = wallets.sumOf { it.balance }
 }
 
 fun formatRupiah(amount: Long): String {
-    val localeID = Locale("in", "ID")
-    val formatter = NumberFormat.getCurrencyInstance(localeID)
-    formatter.maximumFractionDigits = 0
-    return formatter.format(amount).replace("Rp", "Rp ")
+    val format = NumberFormat.getCurrencyInstance(Locale("id", "ID"))
+    format.maximumFractionDigits = 0
+    return format.format(amount)
 }
 
 fun getCurrentFormattedDate(): String {
-    val sdf = java.text.SimpleDateFormat("dd MMM yyyy HH:mm", Locale("in", "ID"))
+    val sdf = java.text.SimpleDateFormat("dd MMM yyyy HH:mm", Locale("id", "ID"))
     return sdf.format(java.util.Date())
 }
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
-    private val prefs = application.getSharedPreferences("app_financial_data", Context.MODE_PRIVATE)
-    private val cloudPrefs = application.getSharedPreferences("google_drive_appdata_cloud_store", Context.MODE_PRIVATE)
+
+    private val prefs = application.getSharedPreferences("base_app_prefs", Context.MODE_PRIVATE)
+    private val firestoreRepo = FirestoreRepository(application)
 
     private val _uiState = MutableStateFlow(MainUiState())
     val uiState: StateFlow<MainUiState> = _uiState.asStateFlow()
 
     init {
         loadStateFromPrefs()
-        startRealtimeSyncTicker()
-    }
-
-    private fun startRealtimeSyncTicker() {
-        viewModelScope.launch {
-            while (true) {
-                delay(3000) // Poll for real-time multi-device cloud updates every 3 seconds
-                checkAndSyncFromCloud()
-            }
+        if (_uiState.value.googleUser.isLoggedIn) {
+            startFirestoreSync()
         }
     }
 
-    private fun checkAndSyncFromCloud() {
-        val currentUser = _uiState.value.googleUser
-        val currentSyncState = _uiState.value.syncState
-        if (!currentUser.isLoggedIn || !currentSyncState.isRealtimeEnabled) return
+    private fun getActiveUid(): String {
+        val user = _uiState.value.googleUser
+        return firestoreRepo.getCurrentUserUid()
+            ?: if (user.email.isNotBlank()) user.email.replace(".", "_").replace("@", "_at_") else "user_default"
+    }
 
-        val cloudKey = "cloud_data_" + currentUser.email
-        val cloudTimestampKey = "cloud_ts_" + currentUser.email
-        val cloudTimestamp = cloudPrefs.getLong(cloudTimestampKey, 0L)
+    private fun startFirestoreSync() {
+        val user = _uiState.value.googleUser
+        if (!user.isLoggedIn) return
+        val uid = getActiveUid()
 
-        if (cloudTimestamp > currentSyncState.lastSyncTimestamp) {
-            val cloudJson = cloudPrefs.getString(cloudKey, null)
-            if (!cloudJson.isNullOrBlank()) {
-                val success = restoreDatabaseFromJsonInternal(cloudJson)
-                if (success) {
-                    _uiState.update { state ->
-                        state.copy(
-                            syncState = state.syncState.copy(
-                                lastSyncTimestamp = cloudTimestamp,
-                                lastSyncTime = getCurrentFormattedDate(),
-                                syncStatusMessage = "Terhubung & Realtime Sync Aktif"
-                            ),
-                            logs = listOf("✨ Realtime Sync: Data disinkronkan dari perangkat Google Account (${currentUser.email})") + state.logs
+        firestoreRepo.startRealtimeSync(
+            uid = uid,
+            onTransactionsUpdated = { list ->
+                _uiState.update { state ->
+                    state.copy(
+                        transactions = list,
+                        syncState = state.syncState.copy(
+                            lastSyncTime = getCurrentFormattedDate(),
+                            syncStatusMessage = "Terhubung & Firestore Realtime Sync Aktif"
                         )
-                    }
+                    )
                 }
+            },
+            onWalletsUpdated = { list ->
+                _uiState.update { it.copy(wallets = list) }
+            },
+            onDebtsUpdated = { list ->
+                _uiState.update { it.copy(debts = list) }
+            },
+            onReceivablesUpdated = { list ->
+                _uiState.update { it.copy(receivables = list) }
+            },
+            onCategoriesUpdated = { inc, exp ->
+                _uiState.update { it.copy(incomeCategories = inc, expenseCategories = exp) }
             }
+        )
+    }
+
+    private fun syncAllToFirestore() {
+        val state = _uiState.value
+        if (!state.googleUser.isLoggedIn) return
+        val uid = getActiveUid()
+
+        viewModelScope.launch {
+            state.transactions.forEach { firestoreRepo.saveTransaction(uid, it) }
+            state.wallets.forEach { firestoreRepo.saveWallet(uid, it) }
+            state.debts.forEach { firestoreRepo.saveDebt(uid, it) }
+            state.receivables.forEach { firestoreRepo.saveReceivable(uid, it) }
+            firestoreRepo.saveCategories(uid, state.incomeCategories, state.expenseCategories)
         }
     }
 
@@ -220,15 +229,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         } else {
             saveStateToPrefs()
         }
-
-        checkAndSyncFromCloud()
     }
 
     private fun saveStateToPrefs() {
         try {
             val jsonStr = exportBackupJson()
             val state = _uiState.value
-            val now = System.currentTimeMillis()
 
             prefs.edit()
                 .putString("saved_data_json", jsonStr)
@@ -239,24 +245,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 .apply()
 
             if (state.googleUser.isLoggedIn && state.syncState.isRealtimeEnabled) {
-                val cloudKey = "cloud_data_" + state.googleUser.email
-                val cloudTimestampKey = "cloud_ts_" + state.googleUser.email
-                cloudPrefs.edit()
-                    .putString(cloudKey, jsonStr)
-                    .putLong(cloudTimestampKey, now)
-                    .apply()
-
-                _uiState.update {
-                    it.copy(
-                        syncState = it.syncState.copy(
-                            lastSyncTimestamp = now,
-                            lastSyncTime = getCurrentFormattedDate()
-                        )
-                    )
-                }
+                syncAllToFirestore()
             }
         } catch (e: Exception) {
             e.printStackTrace()
+        }
+    }
+
+    fun forceCloudSync() {
+        saveStateToPrefs()
+        if (_uiState.value.googleUser.isLoggedIn) {
+            startFirestoreSync()
+            syncAllToFirestore()
         }
     }
 
@@ -269,32 +269,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             state.copy(
                 syncState = state.syncState.copy(
                     isRealtimeEnabled = enabled,
-                    syncStatusMessage = if (enabled) "Terhubung & Realtime Sync Aktif" else "Realtime Sync Dinonaktifkan"
+                    syncStatusMessage = if (enabled) "Terhubung & Realtime Sync Firestore Aktif" else "Realtime Sync Dinonaktifkan"
                 ),
-                logs = listOf(if (enabled) "🟢 Realtime Sync diaktifkan." else "🟠 Realtime Sync dinonaktifkan.") + state.logs
+                logs = listOf(if (enabled) "🟢 Realtime Sync Firestore diaktifkan." else "🟠 Realtime Sync Firestore dinonaktifkan.") + state.logs
             )
         }
-        if (enabled) {
-            forceCloudSync()
-        }
-    }
-
-    fun forceCloudSync() {
-        _uiState.update { state ->
-            state.copy(syncState = state.syncState.copy(isSyncing = true))
-        }
-        saveStateToPrefs()
-        checkAndSyncFromCloud()
-        _uiState.update { state ->
-            state.copy(
-                syncState = state.syncState.copy(
-                    isSyncing = false,
-                    lastSyncTime = getCurrentFormattedDate(),
-                    lastSyncTimestamp = System.currentTimeMillis(),
-                    syncStatusMessage = "Terhubung & Realtime Sync Aktif"
-                ),
-                logs = listOf("⚡ Sinkronisasi Cloud Google Account berhasil diproses.") + state.logs
-            )
+        if (enabled && _uiState.value.googleUser.isLoggedIn) {
+            startFirestoreSync()
+            syncAllToFirestore()
+        } else {
+            firestoreRepo.stopRealtimeSync()
         }
     }
 
@@ -313,31 +297,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 ),
                 syncState = state.syncState.copy(
                     isRealtimeEnabled = true,
-                    syncStatusMessage = "Terhubung & Realtime Sync Aktif"
+                    syncStatusMessage = "Terhubung & Firestore Realtime Sync Aktif"
                 ),
                 logs = listOf("🔑 Login Google Account berhasil: $cleanEmail") + state.logs
             )
         }
 
-        val cloudKey = "cloud_data_" + cleanEmail
-        val cloudJson = cloudPrefs.getString(cloudKey, null)
-        if (!cloudJson.isNullOrBlank()) {
-            val success = restoreDatabaseFromJsonInternal(cloudJson)
-            if (success) {
-                _uiState.update { state ->
-                    state.copy(
-                        logs = listOf("✨ Data disinkronkan dari Cloud Google Account ($cleanEmail)") + state.logs
-                    )
-                }
-            }
-        } else {
-            saveStateToPrefs()
-        }
-
-        forceCloudSync()
+        startFirestoreSync()
+        saveStateToPrefs()
     }
 
     fun logoutGoogleAccount() {
+        firestoreRepo.stopRealtimeSync()
         _uiState.update { state ->
             state.copy(
                 googleUser = state.googleUser.copy(
@@ -374,9 +345,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         if (amount <= 0 || walletId.isBlank()) return
         val dateStr = getCurrentFormattedDate()
 
+        var createdTx: TransactionItem? = null
+        var updatedTargetWallet: Wallet? = null
+
         _uiState.update { state ->
             val updatedWallets = state.wallets.map { w ->
-                if (w.id == walletId) w.copy(balance = w.balance + amount) else w
+                if (w.id == walletId) {
+                    val updated = w.copy(balance = w.balance + amount)
+                    updatedTargetWallet = updated
+                    updated
+                } else w
             }
             val targetWallet = updatedWallets.find { it.id == walletId }
             val walletName = targetWallet?.name ?: "Wallet"
@@ -393,12 +371,19 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 date = dateStr,
                 note = note
             )
+            createdTx = newTransaction
 
             state.copy(
                 wallets = updatedWallets,
                 transactions = listOf(newTransaction) + state.transactions,
                 logs = listOf("Pemasukan ${formatRupiah(amount)} ke $walletName berhasil dicatat.") + state.logs
             )
+        }
+
+        if (_uiState.value.googleUser.isLoggedIn) {
+            val uid = getActiveUid()
+            createdTx?.let { firestoreRepo.saveTransaction(uid, it) }
+            updatedTargetWallet?.let { firestoreRepo.saveWallet(uid, it) }
         }
         saveStateToPrefs()
     }
@@ -412,6 +397,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     ) {
         if (amount <= 0 || walletId.isBlank()) return
         val dateStr = getCurrentFormattedDate()
+
+        var createdTx: TransactionItem? = null
 
         _uiState.update { state ->
             val mainWallet = state.wallets.find { it.id == walletId } ?: return@update state
@@ -434,6 +421,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     date = dateStr,
                     note = note
                 )
+                createdTx = newTransaction
 
                 state.copy(
                     wallets = updatedWallets,
@@ -441,7 +429,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     logs = listOf("Pengeluaran ${formatRupiah(amount)} dari ${mainWallet.name} berhasil dicatat.") + state.logs
                 )
             } else {
-                // Split Mode (Main wallet insufficient -> bailout wallet covers remaining)
+                // Split Mode
                 val mainWalletBalanceCovered = mainWallet.balance
                 val bailoutAmount = amount - mainWalletBalanceCovered
                 val bailoutWallet = state.wallets.find { it.id == bailoutWalletId }
@@ -488,6 +476,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     date = dateStr,
                     note = fullNote
                 )
+                createdTx = newTransaction
 
                 state.copy(
                     wallets = updatedWallets,
@@ -498,18 +487,28 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 )
             }
         }
+
+        if (_uiState.value.googleUser.isLoggedIn) {
+            val uid = getActiveUid()
+            createdTx?.let { firestoreRepo.saveTransaction(uid, it) }
+            _uiState.value.wallets.forEach { firestoreRepo.saveWallet(uid, it) }
+            _uiState.value.debts.forEach { firestoreRepo.saveDebt(uid, it) }
+            _uiState.value.receivables.forEach { firestoreRepo.saveReceivable(uid, it) }
+        }
         saveStateToPrefs()
     }
 
     fun addTransfer(
         amount: Long,
-        transferMode: String, // "Pemindahan Dana", "Bayar Utang", "Piutang (Meminjamkan)"
+        transferMode: String,
         sourceWalletId: String,
         destinationWalletId: String,
         note: String
     ) {
         if (amount <= 0 || sourceWalletId.isBlank() || destinationWalletId.isBlank() || sourceWalletId == destinationWalletId) return
         val dateStr = getCurrentFormattedDate()
+
+        var createdTx: TransactionItem? = null
 
         _uiState.update { state ->
             val sourceWallet = state.wallets.find { it.id == sourceWalletId } ?: return@update state
@@ -536,13 +535,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 date = dateStr,
                 note = note
             )
+            createdTx = newTransaction
 
             var newDebts = state.debts
             var newReceivables = state.receivables
 
             when (transferMode) {
                 "Bayar Utang" -> {
-                    // Reduce or settle existing debt from sourceWallet to destWallet if exists
                     val existingDebt = state.debts.find { it.walletId == sourceWalletId && it.targetWalletName == destWallet.name }
                     if (existingDebt != null) {
                         if (existingDebt.amount <= amount) {
@@ -555,7 +554,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     }
                 }
                 "Piutang (Meminjamkan)" -> {
-                    // Record receivable item
                     val newReceivable = ReceivableItem(
                         id = "r_${System.currentTimeMillis()}",
                         walletId = sourceWalletId,
@@ -576,6 +574,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 logs = listOf("Transfer $transferMode ${formatRupiah(amount)} dari ${sourceWallet.name} ke ${destWallet.name} berhasil.") + state.logs
             )
         }
+
+        if (_uiState.value.googleUser.isLoggedIn) {
+            val uid = getActiveUid()
+            createdTx?.let { firestoreRepo.saveTransaction(uid, it) }
+            _uiState.value.wallets.forEach { firestoreRepo.saveWallet(uid, it) }
+            _uiState.value.debts.forEach { firestoreRepo.saveDebt(uid, it) }
+            _uiState.value.receivables.forEach { firestoreRepo.saveReceivable(uid, it) }
+        }
         saveStateToPrefs()
     }
 
@@ -594,6 +600,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 logs = listOf("Wallet baru '${newWallet.name}' berhasil ditambahkan.") + state.logs
             )
         }
+        if (_uiState.value.googleUser.isLoggedIn) {
+            firestoreRepo.saveWallet(getActiveUid(), newWallet)
+        }
         saveStateToPrefs()
     }
 
@@ -606,15 +615,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     ) {
         val nameTrimmed = newName.trim()
         if (nameTrimmed.isBlank()) return
+        var editedW: Wallet? = null
         _uiState.update { state ->
             val updatedWallets = state.wallets.map { w ->
                 if (w.id == id) {
-                    w.copy(
+                    val updated = w.copy(
                         name = nameTrimmed,
                         balance = newBalance,
                         accountNumber = newAccountNumber.ifBlank { "-" },
                         type = newType
                     )
+                    editedW = updated
+                    updated
                 } else w
             }
             val updatedTransactions = state.transactions.map { t ->
@@ -630,6 +642,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 selectedWalletDetail = updatedSelectedWallet,
                 logs = listOf("Wallet '$nameTrimmed' berhasil diperbarui.") + state.logs
             )
+        }
+        if (_uiState.value.googleUser.isLoggedIn) {
+            editedW?.let { firestoreRepo.saveWallet(getActiveUid(), it) }
         }
         saveStateToPrefs()
     }
@@ -647,6 +662,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 logs = listOf("Wallet '$walletName' berhasil dihapus.") + state.logs
             )
         }
+        if (_uiState.value.googleUser.isLoggedIn) {
+            firestoreRepo.deleteWallet(getActiveUid(), id)
+        }
         saveStateToPrefs()
     }
 
@@ -659,6 +677,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 incomeCategories = state.incomeCategories + trimmed,
                 logs = listOf("Kategori Pemasukan '$trimmed' berhasil ditambahkan.") + state.logs
             )
+        }
+        if (_uiState.value.googleUser.isLoggedIn) {
+            firestoreRepo.saveCategories(getActiveUid(), _uiState.value.incomeCategories, _uiState.value.expenseCategories)
         }
         saveStateToPrefs()
     }
@@ -681,6 +702,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 logs = listOf("Kategori Pemasukan '$oldCategory' diubah menjadi '$trimmed'.") + state.logs
             )
         }
+        if (_uiState.value.googleUser.isLoggedIn) {
+            firestoreRepo.saveCategories(getActiveUid(), _uiState.value.incomeCategories, _uiState.value.expenseCategories)
+        }
         saveStateToPrefs()
     }
 
@@ -691,6 +715,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 incomeCategories = updatedCategories,
                 logs = listOf("Kategori Pemasukan '$categoryName' berhasil dihapus.") + state.logs
             )
+        }
+        if (_uiState.value.googleUser.isLoggedIn) {
+            firestoreRepo.saveCategories(getActiveUid(), _uiState.value.incomeCategories, _uiState.value.expenseCategories)
         }
         saveStateToPrefs()
     }
@@ -704,6 +731,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 expenseCategories = state.expenseCategories + trimmed,
                 logs = listOf("Kategori Pengeluaran '$trimmed' berhasil ditambahkan.") + state.logs
             )
+        }
+        if (_uiState.value.googleUser.isLoggedIn) {
+            firestoreRepo.saveCategories(getActiveUid(), _uiState.value.incomeCategories, _uiState.value.expenseCategories)
         }
         saveStateToPrefs()
     }
@@ -726,6 +756,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 logs = listOf("Kategori Pengeluaran '$oldCategory' diubah menjadi '$trimmed'.") + state.logs
             )
         }
+        if (_uiState.value.googleUser.isLoggedIn) {
+            firestoreRepo.saveCategories(getActiveUid(), _uiState.value.incomeCategories, _uiState.value.expenseCategories)
+        }
         saveStateToPrefs()
     }
 
@@ -736,6 +769,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 expenseCategories = updatedCategories,
                 logs = listOf("Kategori Pengeluaran '$categoryName' berhasil dihapus.") + state.logs
             )
+        }
+        if (_uiState.value.googleUser.isLoggedIn) {
+            firestoreRepo.saveCategories(getActiveUid(), _uiState.value.incomeCategories, _uiState.value.expenseCategories)
         }
         saveStateToPrefs()
     }
@@ -801,11 +837,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         newDate: String
     ) {
         if (newAmount <= 0 || newTitle.isBlank()) return
+        var editedTx: TransactionItem? = null
         _uiState.update { state ->
             val oldTx = state.transactions.find { it.id == id } ?: return@update state
             val targetWallet = state.wallets.find { it.id == newWalletId } ?: return@update state
 
-            // Revert old transaction balance impact
             var tempWallets = state.wallets.map { w ->
                 if (w.id == oldTx.walletId) {
                     val revertedBalance = when (oldTx.type) {
@@ -817,7 +853,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 } else w
             }
 
-            // Apply new transaction balance impact
             tempWallets = tempWallets.map { w ->
                 if (w.id == newWalletId) {
                     val newBalance = when (oldTx.type) {
@@ -831,7 +866,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
             val updatedTransactions = state.transactions.map { t ->
                 if (t.id == id) {
-                    t.copy(
+                    val updated = t.copy(
                         title = newTitle.trim(),
                         amount = newAmount,
                         category = newCategory,
@@ -839,6 +874,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         walletName = targetWallet.name,
                         date = newDate.ifBlank { t.date }
                     )
+                    editedTx = updated
+                    updated
                 } else t
             }
 
@@ -847,6 +884,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 transactions = updatedTransactions,
                 logs = listOf("Transaksi '${newTitle.trim()}' berhasil diperbarui.") + state.logs
             )
+        }
+        if (_uiState.value.googleUser.isLoggedIn) {
+            val uid = getActiveUid()
+            editedTx?.let { firestoreRepo.saveTransaction(uid, it) }
+            _uiState.value.wallets.forEach { firestoreRepo.saveWallet(uid, it) }
         }
         saveStateToPrefs()
     }
@@ -872,6 +914,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 transactions = updatedTransactions,
                 logs = listOf("Transaksi '${tx.title}' (${formatRupiah(tx.amount)}) berhasil dihapus.") + state.logs
             )
+        }
+        if (_uiState.value.googleUser.isLoggedIn) {
+            val uid = getActiveUid()
+            firestoreRepo.deleteTransaction(uid, id)
+            _uiState.value.wallets.forEach { firestoreRepo.saveWallet(uid, it) }
         }
         saveStateToPrefs()
     }
@@ -943,15 +990,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         state.expenseCategories.forEach { expCatArr.put(it) }
         root.put("expenseCategories", expCatArr)
 
-        root.put("version", 1)
-        root.put("exportDate", getCurrentFormattedDate())
-
         return root.toString(2)
     }
 
     private fun restoreDatabaseFromJsonInternal(jsonStr: String): Boolean {
         return try {
             val root = JSONObject(jsonStr)
+
             val walletsList = mutableListOf<Wallet>()
             if (root.has("wallets")) {
                 val arr = root.getJSONArray("wallets")
@@ -976,7 +1021,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 for (i in 0 until arr.length()) {
                     val obj = arr.getJSONObject(i)
                     val typeStr = obj.optString("type", "EXPENSE")
-                    val tType = try { TransactionType.valueOf(typeStr) } catch (e: Exception) { TransactionType.EXPENSE }
+                    val typeEnum = try {
+                        TransactionType.valueOf(typeStr)
+                    } catch (e: Exception) {
+                        TransactionType.EXPENSE
+                    }
                     txList.add(
                         TransactionItem(
                             id = obj.optString("id", "t_$i"),
@@ -985,7 +1034,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                             title = obj.optString("title", ""),
                             category = obj.optString("category", ""),
                             amount = obj.optLong("amount", 0L),
-                            type = tType,
+                            type = typeEnum,
                             date = obj.optString("date", ""),
                             note = obj.optString("note", "")
                         )
@@ -1044,9 +1093,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     expCatList.add(arr.getString(i))
                 }
             }
+
             _uiState.update { state ->
                 state.copy(
-                    wallets = if (root.has("wallets")) walletsList else state.wallets,
+                    wallets = walletsList,
                     transactions = txList,
                     debts = debtsList,
                     receivables = recList,
@@ -1057,6 +1107,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
             true
         } catch (e: Exception) {
+            e.printStackTrace()
             false
         }
     }
@@ -1070,9 +1121,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun resetDatabase() {
-        prefs.edit().clear().apply()
-        _uiState.update {
-            MainUiState(
+        _uiState.update { state ->
+            state.copy(
                 wallets = emptyList(),
                 transactions = emptyList(),
                 debts = emptyList(),
@@ -1082,7 +1132,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 logs = listOf("Database telah di-reset. Semua data sampel & template kategori telah dibersihkan.")
             )
         }
+        if (_uiState.value.googleUser.isLoggedIn) {
+            syncAllToFirestore()
+        }
         saveStateToPrefs()
     }
 }
-

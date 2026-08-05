@@ -717,7 +717,11 @@ fun WalletDetailDialog(
 }
 
 @Composable
-fun TransactionItemRow(transaction: TransactionItem) {
+fun TransactionItemRow(
+    transaction: TransactionItem,
+    onEdit: (() -> Unit)? = null,
+    onDelete: (() -> Unit)? = null
+) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -729,13 +733,13 @@ fun TransactionItemRow(transaction: TransactionItem) {
         elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
     ) {
         Row(
-            modifier = Modifier.padding(14.dp),
-            horizontalArrangement = Arrangement.spacedBy(14.dp),
+            modifier = Modifier.padding(12.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Box(
                 modifier = Modifier
-                    .size(42.dp)
+                    .size(40.dp)
                     .clip(CircleShape)
                     .background(
                         when (transaction.type) {
@@ -796,20 +800,63 @@ fun TransactionItemRow(transaction: TransactionItem) {
                 }
             }
 
-            Text(
-                text = when (transaction.type) {
-                    TransactionType.INCOME -> "+ ${formatRupiah(transaction.amount)}"
-                    TransactionType.EXPENSE -> "- ${formatRupiah(transaction.amount)}"
-                    TransactionType.TRANSFER -> formatRupiah(transaction.amount)
-                },
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.Bold,
-                color = when (transaction.type) {
-                    TransactionType.INCOME -> MaterialTheme.colorScheme.tertiary
-                    TransactionType.EXPENSE -> MaterialTheme.colorScheme.error
-                    TransactionType.TRANSFER -> MaterialTheme.colorScheme.secondary
+            Column(
+                horizontalAlignment = Alignment.End,
+                verticalArrangement = Arrangement.spacedBy(2.dp)
+            ) {
+                Text(
+                    text = when (transaction.type) {
+                        TransactionType.INCOME -> "+ ${formatRupiah(transaction.amount)}"
+                        TransactionType.EXPENSE -> "- ${formatRupiah(transaction.amount)}"
+                        TransactionType.TRANSFER -> formatRupiah(transaction.amount)
+                    },
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = when (transaction.type) {
+                        TransactionType.INCOME -> MaterialTheme.colorScheme.tertiary
+                        TransactionType.EXPENSE -> MaterialTheme.colorScheme.error
+                        TransactionType.TRANSFER -> MaterialTheme.colorScheme.secondary
+                    }
+                )
+
+                if (onEdit != null || onDelete != null) {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(0.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        if (onEdit != null) {
+                            IconButton(
+                                onClick = onEdit,
+                                modifier = Modifier
+                                    .size(28.dp)
+                                    .testTag("edit_tx_${transaction.id}")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Edit,
+                                    contentDescription = "Edit Transaksi",
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(15.dp)
+                                )
+                            }
+                        }
+                        if (onDelete != null) {
+                            IconButton(
+                                onClick = onDelete,
+                                modifier = Modifier
+                                    .size(28.dp)
+                                    .testTag("delete_tx_${transaction.id}")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Delete,
+                                    contentDescription = "Hapus Transaksi",
+                                    tint = MaterialTheme.colorScheme.error,
+                                    modifier = Modifier.size(15.dp)
+                                )
+                            }
+                        }
+                    }
                 }
-            )
+            }
         }
     }
 }
@@ -819,6 +866,9 @@ fun HistoryTab(
     uiState: MainUiState,
     viewModel: MainViewModel
 ) {
+    var txToEdit by remember { mutableStateOf<TransactionItem?>(null) }
+    var txToDelete by remember { mutableStateOf<TransactionItem?>(null) }
+
     val filteredTransactions = remember(uiState.transactions, uiState.searchQuery) {
         if (uiState.searchQuery.isBlank()) {
             uiState.transactions
@@ -958,9 +1008,46 @@ fun HistoryTab(
             }
         } else {
             items(filteredTransactions, key = { it.id }) { transaction ->
-                TransactionItemRow(transaction = transaction)
+                TransactionItemRow(
+                    transaction = transaction,
+                    onEdit = { txToEdit = transaction },
+                    onDelete = { txToDelete = transaction }
+                )
             }
         }
+    }
+
+    txToEdit?.let { tx ->
+        EditTransactionDialog(
+            transaction = tx,
+            wallets = uiState.wallets,
+            incomeCategories = uiState.incomeCategories,
+            expenseCategories = uiState.expenseCategories,
+            onDismiss = { txToEdit = null },
+            onSave = { newTitle, newAmount, newCategory, newWalletId, newDate ->
+                viewModel.editTransaction(
+                    id = tx.id,
+                    newTitle = newTitle,
+                    newAmount = newAmount,
+                    newCategory = newCategory,
+                    newWalletId = newWalletId,
+                    newDate = newDate
+                )
+                txToEdit = null
+            }
+        )
+    }
+
+    txToDelete?.let { tx ->
+        ConfirmDeleteDialog(
+            title = "Hapus Transaksi?",
+            message = "Apakah Anda yakin ingin menghapus transaksi '${tx.title}' (${formatRupiah(tx.amount)})?",
+            onDismiss = { txToDelete = null },
+            onConfirm = {
+                viewModel.deleteTransaction(tx.id)
+                txToDelete = null
+            }
+        )
     }
 }@OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -974,6 +1061,10 @@ fun SettingsTab(
 
     var categoryToEdit by remember { mutableStateOf<Pair<String, Boolean>?>(null) }
     var categoryToDelete by remember { mutableStateOf<Pair<String, Boolean>?>(null) }
+
+    var showBackupDialog by remember { mutableStateOf(false) }
+    var showRestoreDialog by remember { mutableStateOf(false) }
+    var showResetDatabaseDialog by remember { mutableStateOf(false) }
 
     LazyColumn(
         modifier = Modifier
@@ -1186,6 +1277,15 @@ fun SettingsTab(
                 onDeleteExpenseCategory = { cat -> categoryToDelete = Pair(cat, false) }
             )
         }
+
+        // Section: Pengaturan Database (Reset, Backup, Restore)
+        item {
+            DatabaseManagementCard(
+                onBackup = { showBackupDialog = true },
+                onRestore = { showRestoreDialog = true },
+                onReset = { showResetDatabaseDialog = true }
+            )
+        }
     }
 
     if (showAddWalletDialog) {
@@ -1252,6 +1352,487 @@ fun SettingsTab(
                 categoryToDelete = null
             }
         )
+    }
+
+    if (showBackupDialog) {
+        BackupDatabaseDialog(
+            jsonString = viewModel.exportBackupJson(),
+            onDismiss = { showBackupDialog = false }
+        )
+    }
+
+    if (showRestoreDialog) {
+        RestoreDatabaseDialog(
+            onDismiss = { showRestoreDialog = false },
+            onRestore = { json ->
+                viewModel.restoreDatabaseFromJson(json)
+            }
+        )
+    }
+
+    if (showResetDatabaseDialog) {
+        ConfirmDeleteDialog(
+            title = "Reset Seluruh Database?",
+            message = "Perhatian: Semua data dompet, riwayat transaksi, utang, dan piutang akan dikembalikan ke kondisi awal. Apakah Anda yakin ingin melanjutkan?",
+            onDismiss = { showResetDatabaseDialog = false },
+            onConfirm = {
+                viewModel.resetDatabase()
+                showResetDatabaseDialog = false
+            }
+        )
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+fun EditTransactionDialog(
+    transaction: TransactionItem,
+    wallets: List<Wallet>,
+    incomeCategories: List<String>,
+    expenseCategories: List<String>,
+    onDismiss: () -> Unit,
+    onSave: (title: String, amount: Long, category: String, walletId: String, date: String) -> Unit
+) {
+    var title by remember { mutableStateOf(transaction.title) }
+    var amountStr by remember { mutableStateOf(transaction.amount.toString()) }
+    var selectedWalletId by remember { mutableStateOf(transaction.walletId.ifBlank { wallets.firstOrNull()?.id ?: "" }) }
+    var selectedCategory by remember { mutableStateOf(transaction.category) }
+    var dateStr by remember { mutableStateOf(transaction.date) }
+
+    val availableCategories = if (transaction.type == TransactionType.INCOME) incomeCategories else expenseCategories
+
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(
+            shape = RoundedCornerShape(24.dp),
+            color = MaterialTheme.colorScheme.surface,
+            tonalElevation = 6.dp,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(12.dp)
+                .testTag("edit_transaction_dialog")
+        ) {
+            Column(
+                modifier = Modifier
+                    .padding(20.dp)
+                    .fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Edit Transaksi",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold
+                    )
+                    IconButton(onClick = onDismiss) {
+                        Icon(Icons.Default.Close, contentDescription = "Tutup")
+                    }
+                }
+
+                OutlinedTextField(
+                    value = title,
+                    onValueChange = { title = it },
+                    label = { Text("Judul / Catatan") },
+                    singleLine = true,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("edit_tx_title_input"),
+                    shape = RoundedCornerShape(12.dp)
+                )
+
+                OutlinedTextField(
+                    value = amountStr,
+                    onValueChange = { amountStr = it.filter { c -> c.isDigit() } },
+                    label = { Text("Nominal (Rp)") },
+                    singleLine = true,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("edit_tx_amount_input"),
+                    shape = RoundedCornerShape(12.dp)
+                )
+
+                OutlinedTextField(
+                    value = dateStr,
+                    onValueChange = { dateStr = it },
+                    label = { Text("Tanggal & Waktu") },
+                    singleLine = true,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("edit_tx_date_input"),
+                    shape = RoundedCornerShape(12.dp)
+                )
+
+                Text(
+                    text = "Dompet Terkait:",
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.SemiBold
+                )
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    wallets.forEach { wallet ->
+                        FilterChip(
+                            selected = wallet.id == selectedWalletId,
+                            onClick = { selectedWalletId = wallet.id },
+                            label = { Text(wallet.name) }
+                        )
+                    }
+                }
+
+                if (availableCategories.isNotEmpty()) {
+                    Text(
+                        text = "Kategori:",
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        availableCategories.forEach { cat ->
+                            FilterChip(
+                                selected = cat == selectedCategory,
+                                onClick = { selectedCategory = cat },
+                                label = { Text(cat) }
+                            )
+                        }
+                    }
+                }
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 8.dp),
+                    horizontalArrangement = Arrangement.End,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    TextButton(onClick = onDismiss) {
+                        Text("Batal")
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Button(
+                        onClick = {
+                            val amount = amountStr.toLongOrNull() ?: 0L
+                            onSave(title, amount, selectedCategory, selectedWalletId, dateStr)
+                        },
+                        enabled = title.isNotBlank() && (amountStr.toLongOrNull() ?: 0L) > 0,
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.testTag("save_edit_tx_button")
+                    ) {
+                        Text("Simpan Transaksi")
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun DatabaseManagementCard(
+    onBackup: () -> Unit,
+    onRestore: () -> Unit,
+    onReset: () -> Unit
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("database_management_setting_card"),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surface
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .padding(20.dp)
+                .fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(40.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(MaterialTheme.colorScheme.secondaryContainer),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Storage,
+                        contentDescription = "Database",
+                        tint = MaterialTheme.colorScheme.onSecondaryContainer
+                    )
+                }
+                Column {
+                    Text(
+                        text = "Database & Cadangan Data",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = "Cadangkan, pulihkan, atau reset seluruh data aplikasi",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                OutlinedButton(
+                    onClick = onBackup,
+                    modifier = Modifier
+                        .weight(1f)
+                        .testTag("backup_db_button"),
+                    shape = RoundedCornerShape(12.dp),
+                    contentPadding = PaddingValues(horizontal = 4.dp, vertical = 8.dp)
+                ) {
+                    Icon(Icons.Default.CloudDownload, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("Backup", fontSize = 12.sp)
+                }
+
+                OutlinedButton(
+                    onClick = onRestore,
+                    modifier = Modifier
+                        .weight(1f)
+                        .testTag("restore_db_button"),
+                    shape = RoundedCornerShape(12.dp),
+                    contentPadding = PaddingValues(horizontal = 4.dp, vertical = 8.dp)
+                ) {
+                    Icon(Icons.Default.CloudUpload, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("Restore", fontSize = 12.sp)
+                }
+
+                Button(
+                    onClick = onReset,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.errorContainer,
+                        contentColor = MaterialTheme.colorScheme.onErrorContainer
+                    ),
+                    modifier = Modifier
+                        .weight(1f)
+                        .testTag("reset_db_button"),
+                    shape = RoundedCornerShape(12.dp),
+                    contentPadding = PaddingValues(horizontal = 4.dp, vertical = 8.dp)
+                ) {
+                    Icon(Icons.Default.RestartAlt, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("Reset", fontSize = 12.sp)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun BackupDatabaseDialog(
+    jsonString: String,
+    onDismiss: () -> Unit
+) {
+    val clipboardManager = androidx.compose.ui.platform.LocalClipboardManager.current
+    var copied by remember { mutableStateOf(false) }
+
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(
+            shape = RoundedCornerShape(24.dp),
+            color = MaterialTheme.colorScheme.surface,
+            tonalElevation = 6.dp,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(12.dp)
+                .testTag("backup_dialog")
+        ) {
+            Column(
+                modifier = Modifier
+                    .padding(20.dp)
+                    .fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Backup Database (JSON)",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                    IconButton(onClick = onDismiss) {
+                        Icon(Icons.Default.Close, contentDescription = "Tutup")
+                    }
+                }
+
+                Text(
+                    text = "Salin data format JSON ini untuk disimpan sebagai cadangan:",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 200.dp)
+                ) {
+                    LazyColumn(modifier = Modifier.padding(12.dp)) {
+                        item {
+                            Text(
+                                text = jsonString,
+                                style = MaterialTheme.typography.bodySmall,
+                                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
+                            )
+                        }
+                    }
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    if (copied) {
+                        Text(
+                            text = "✓ Berhasil disalin!",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.primary,
+                            fontWeight = FontWeight.Bold
+                        )
+                    } else {
+                        Spacer(modifier = Modifier.width(1.dp))
+                    }
+
+                    Button(
+                        onClick = {
+                            clipboardManager.setText(androidx.compose.ui.text.AnnotatedString(jsonString))
+                            copied = true
+                        },
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.testTag("copy_backup_json_button")
+                    ) {
+                        Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Salin JSON")
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun RestoreDatabaseDialog(
+    onDismiss: () -> Unit,
+    onRestore: (jsonString: String) -> Boolean
+) {
+    var inputJson by remember { mutableStateOf("") }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
+
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(
+            shape = RoundedCornerShape(24.dp),
+            color = MaterialTheme.colorScheme.surface,
+            tonalElevation = 6.dp,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(12.dp)
+                .testTag("restore_dialog")
+        ) {
+            Column(
+                modifier = Modifier
+                    .padding(20.dp)
+                    .fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Restore Database (JSON)",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                    IconButton(onClick = onDismiss) {
+                        Icon(Icons.Default.Close, contentDescription = "Tutup")
+                    }
+                }
+
+                Text(
+                    text = "Tempelkan teks cadangan format JSON yang valid untuk memulihkan data database Anda:",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                OutlinedTextField(
+                    value = inputJson,
+                    onValueChange = {
+                        inputJson = it
+                        errorMessage = null
+                    },
+                    placeholder = { Text("Tempelkan data JSON di sini...") },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(140.dp)
+                        .testTag("restore_json_input"),
+                    shape = RoundedCornerShape(12.dp)
+                )
+
+                errorMessage?.let { msg ->
+                    Text(
+                        text = msg,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    TextButton(onClick = onDismiss) {
+                        Text("Batal")
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Button(
+                        onClick = {
+                            if (inputJson.isBlank()) {
+                                errorMessage = "Harap masukkan teks JSON terlebih dahulu."
+                            } else {
+                                val success = onRestore(inputJson)
+                                if (success) {
+                                    onDismiss()
+                                } else {
+                                    errorMessage = "Format JSON tidak valid. Pastikan data berasal dari hasil backup."
+                                }
+                            }
+                        },
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.testTag("submit_restore_button")
+                    ) {
+                        Text("Proses Restore")
+                    }
+                }
+            }
+        }
     }
 }
 

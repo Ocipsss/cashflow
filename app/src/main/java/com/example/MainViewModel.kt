@@ -5,6 +5,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import org.json.JSONArray
+import org.json.JSONObject
 import java.text.NumberFormat
 import java.util.Locale
 
@@ -544,6 +546,280 @@ class MainViewModel : ViewModel() {
     fun clearLogs() {
         _uiState.update { state ->
             state.copy(logs = listOf("Log dibersihkan."))
+        }
+    }
+
+    fun editTransaction(
+        id: String,
+        newTitle: String,
+        newAmount: Long,
+        newCategory: String,
+        newWalletId: String,
+        newDate: String
+    ) {
+        if (newAmount <= 0 || newTitle.isBlank()) return
+        _uiState.update { state ->
+            val oldTx = state.transactions.find { it.id == id } ?: return@update state
+            val targetWallet = state.wallets.find { it.id == newWalletId } ?: return@update state
+
+            // Revert old transaction balance impact
+            var tempWallets = state.wallets.map { w ->
+                if (w.id == oldTx.walletId) {
+                    val revertedBalance = when (oldTx.type) {
+                        TransactionType.INCOME -> w.balance - oldTx.amount
+                        TransactionType.EXPENSE -> w.balance + oldTx.amount
+                        TransactionType.TRANSFER -> w.balance + oldTx.amount
+                    }
+                    w.copy(balance = revertedBalance.coerceAtLeast(0))
+                } else w
+            }
+
+            // Apply new transaction balance impact
+            tempWallets = tempWallets.map { w ->
+                if (w.id == newWalletId) {
+                    val newBalance = when (oldTx.type) {
+                        TransactionType.INCOME -> w.balance + newAmount
+                        TransactionType.EXPENSE -> (w.balance - newAmount).coerceAtLeast(0)
+                        TransactionType.TRANSFER -> (w.balance - newAmount).coerceAtLeast(0)
+                    }
+                    w.copy(balance = newBalance)
+                } else w
+            }
+
+            val updatedTransactions = state.transactions.map { t ->
+                if (t.id == id) {
+                    t.copy(
+                        title = newTitle.trim(),
+                        amount = newAmount,
+                        category = newCategory,
+                        walletId = newWalletId,
+                        walletName = targetWallet.name,
+                        date = newDate.ifBlank { t.date }
+                    )
+                } else t
+            }
+
+            state.copy(
+                wallets = tempWallets,
+                transactions = updatedTransactions,
+                logs = listOf("Transaksi '${newTitle.trim()}' berhasil diperbarui.") + state.logs
+            )
+        }
+    }
+
+    fun deleteTransaction(id: String) {
+        _uiState.update { state ->
+            val tx = state.transactions.find { it.id == id } ?: return@update state
+            val updatedWallets = state.wallets.map { w ->
+                if (w.id == tx.walletId) {
+                    val revertedBalance = when (tx.type) {
+                        TransactionType.INCOME -> w.balance - tx.amount
+                        TransactionType.EXPENSE -> w.balance + tx.amount
+                        TransactionType.TRANSFER -> w.balance + tx.amount
+                    }
+                    w.copy(balance = revertedBalance.coerceAtLeast(0))
+                } else w
+            }
+
+            val updatedTransactions = state.transactions.filter { it.id != id }
+
+            state.copy(
+                wallets = updatedWallets,
+                transactions = updatedTransactions,
+                logs = listOf("Transaksi '${tx.title}' (${formatRupiah(tx.amount)}) berhasil dihapus.") + state.logs
+            )
+        }
+    }
+
+    fun exportBackupJson(): String {
+        val state = _uiState.value
+        val root = JSONObject()
+
+        val walletsArr = JSONArray()
+        state.wallets.forEach { w ->
+            val obj = JSONObject()
+            obj.put("id", w.id)
+            obj.put("name", w.name)
+            obj.put("balance", w.balance)
+            obj.put("accountNumber", w.accountNumber)
+            obj.put("type", w.type)
+            obj.put("iconName", w.iconName)
+            walletsArr.put(obj)
+        }
+        root.put("wallets", walletsArr)
+
+        val txArr = JSONArray()
+        state.transactions.forEach { t ->
+            val obj = JSONObject()
+            obj.put("id", t.id)
+            obj.put("walletId", t.walletId)
+            obj.put("walletName", t.walletName)
+            obj.put("title", t.title)
+            obj.put("category", t.category)
+            obj.put("amount", t.amount)
+            obj.put("type", t.type.name)
+            obj.put("date", t.date)
+            txArr.put(obj)
+        }
+        root.put("transactions", txArr)
+
+        val debtsArr = JSONArray()
+        state.debts.forEach { d ->
+            val obj = JSONObject()
+            obj.put("id", d.id)
+            obj.put("walletId", d.walletId)
+            obj.put("title", d.title)
+            obj.put("targetWalletName", d.targetWalletName)
+            obj.put("amount", d.amount)
+            obj.put("dueDate", d.dueDate)
+            debtsArr.put(obj)
+        }
+        root.put("debts", debtsArr)
+
+        val recArr = JSONArray()
+        state.receivables.forEach { r ->
+            val obj = JSONObject()
+            obj.put("id", r.id)
+            obj.put("walletId", r.walletId)
+            obj.put("title", r.title)
+            obj.put("sourceWalletName", r.sourceWalletName)
+            obj.put("amount", r.amount)
+            obj.put("dueDate", r.dueDate)
+            recArr.put(obj)
+        }
+        root.put("receivables", recArr)
+
+        val incCatArr = JSONArray()
+        state.incomeCategories.forEach { incCatArr.put(it) }
+        root.put("incomeCategories", incCatArr)
+
+        val expCatArr = JSONArray()
+        state.expenseCategories.forEach { expCatArr.put(it) }
+        root.put("expenseCategories", expCatArr)
+
+        root.put("version", 1)
+        root.put("exportDate", getCurrentFormattedDate())
+
+        return root.toString(2)
+    }
+
+    fun restoreDatabaseFromJson(jsonStr: String): Boolean {
+        return try {
+            val root = JSONObject(jsonStr)
+            val walletsList = mutableListOf<Wallet>()
+            if (root.has("wallets")) {
+                val arr = root.getJSONArray("wallets")
+                for (i in 0 until arr.length()) {
+                    val obj = arr.getJSONObject(i)
+                    walletsList.add(
+                        Wallet(
+                            id = obj.optString("id", "w_$i"),
+                            name = obj.optString("name", "Wallet"),
+                            balance = obj.optLong("balance", 0L),
+                            accountNumber = obj.optString("accountNumber", "-"),
+                            type = obj.optString("type", "Bank"),
+                            iconName = obj.optString("iconName", "account_balance_wallet")
+                        )
+                    )
+                }
+            }
+
+            val txList = mutableListOf<TransactionItem>()
+            if (root.has("transactions")) {
+                val arr = root.getJSONArray("transactions")
+                for (i in 0 until arr.length()) {
+                    val obj = arr.getJSONObject(i)
+                    val typeStr = obj.optString("type", "EXPENSE")
+                    val tType = try { TransactionType.valueOf(typeStr) } catch (e: Exception) { TransactionType.EXPENSE }
+                    txList.add(
+                        TransactionItem(
+                            id = obj.optString("id", "t_$i"),
+                            walletId = obj.optString("walletId", ""),
+                            walletName = obj.optString("walletName", ""),
+                            title = obj.optString("title", ""),
+                            category = obj.optString("category", ""),
+                            amount = obj.optLong("amount", 0L),
+                            type = tType,
+                            date = obj.optString("date", "")
+                        )
+                    )
+                }
+            }
+
+            val debtsList = mutableListOf<DebtItem>()
+            if (root.has("debts")) {
+                val arr = root.getJSONArray("debts")
+                for (i in 0 until arr.length()) {
+                    val obj = arr.getJSONObject(i)
+                    debtsList.add(
+                        DebtItem(
+                            id = obj.optString("id", "d_$i"),
+                            walletId = obj.optString("walletId", ""),
+                            title = obj.optString("title", ""),
+                            targetWalletName = obj.optString("targetWalletName", ""),
+                            amount = obj.optLong("amount", 0L),
+                            dueDate = obj.optString("dueDate", "")
+                        )
+                    )
+                }
+            }
+
+            val recList = mutableListOf<ReceivableItem>()
+            if (root.has("receivables")) {
+                val arr = root.getJSONArray("receivables")
+                for (i in 0 until arr.length()) {
+                    val obj = arr.getJSONObject(i)
+                    recList.add(
+                        ReceivableItem(
+                            id = obj.optString("id", "r_$i"),
+                            walletId = obj.optString("walletId", ""),
+                            title = obj.optString("title", ""),
+                            sourceWalletName = obj.optString("sourceWalletName", ""),
+                            amount = obj.optLong("amount", 0L),
+                            dueDate = obj.optString("dueDate", "")
+                        )
+                    )
+                }
+            }
+
+            val incCatList = mutableListOf<String>()
+            if (root.has("incomeCategories")) {
+                val arr = root.getJSONArray("incomeCategories")
+                for (i in 0 until arr.length()) {
+                    incCatList.add(arr.getString(i))
+                }
+            }
+
+            val expCatList = mutableListOf<String>()
+            if (root.has("expenseCategories")) {
+                val arr = root.getJSONArray("expenseCategories")
+                for (i in 0 until arr.length()) {
+                    expCatList.add(arr.getString(i))
+                }
+            }
+
+            _uiState.update { state ->
+                state.copy(
+                    wallets = if (walletsList.isNotEmpty()) walletsList else state.wallets,
+                    transactions = txList,
+                    debts = debtsList,
+                    receivables = recList,
+                    incomeCategories = if (incCatList.isNotEmpty()) incCatList else state.incomeCategories,
+                    expenseCategories = if (expCatList.isNotEmpty()) expCatList else state.expenseCategories,
+                    logs = listOf("Database berhasil di-restore dari data JSON.") + state.logs
+                )
+            }
+            true
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    fun resetDatabase() {
+        _uiState.update {
+            MainUiState(
+                logs = listOf("Database telah di-reset ke kondisi awal.")
+            )
         }
     }
 }

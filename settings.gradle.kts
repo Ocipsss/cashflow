@@ -22,6 +22,6 @@ dependencyResolutionManagement {
   }
 }
 
-rootProject.name = "Base App"
+rootProject.name = "AlDa"
 
 include(":app")

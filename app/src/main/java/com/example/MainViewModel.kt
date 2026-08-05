@@ -1,5 +1,8 @@
 package com.example
 
+import android.app.Application
+import android.content.Context
+import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.ViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -138,9 +141,41 @@ fun getCurrentFormattedDate(): String {
     return sdf.format(java.util.Date())
 }
 
-class MainViewModel : ViewModel() {
+class MainViewModel(application: Application) : AndroidViewModel(application) {
+    private val prefs = application.getSharedPreferences("app_financial_data", Context.MODE_PRIVATE)
+
     private val _uiState = MutableStateFlow(MainUiState())
     val uiState: StateFlow<MainUiState> = _uiState.asStateFlow()
+
+    init {
+        loadStateFromPrefs()
+    }
+
+    private fun loadStateFromPrefs() {
+        val savedJson = prefs.getString("saved_data_json", null)
+        val savedDarkTheme = prefs.getBoolean("is_dark_theme", false)
+
+        if (!savedJson.isNullOrBlank()) {
+            val success = restoreDatabaseFromJsonInternal(savedJson)
+            if (success) {
+                _uiState.update { it.copy(isDarkThemeOverride = savedDarkTheme) }
+            }
+        } else {
+            saveStateToPrefs()
+        }
+    }
+
+    private fun saveStateToPrefs() {
+        try {
+            val jsonStr = exportBackupJson()
+            prefs.edit()
+                .putString("saved_data_json", jsonStr)
+                .putBoolean("is_dark_theme", _uiState.value.isDarkThemeOverride)
+                .apply()
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
 
     fun selectWalletForDetail(wallet: Wallet?) {
         _uiState.update { state ->
@@ -188,6 +223,7 @@ class MainViewModel : ViewModel() {
                 logs = listOf("Pemasukan ${formatRupiah(amount)} ke $walletName berhasil dicatat.") + state.logs
             )
         }
+        saveStateToPrefs()
     }
 
     fun addExpense(
@@ -268,6 +304,7 @@ class MainViewModel : ViewModel() {
                 )
             }
         }
+        saveStateToPrefs()
     }
 
     fun addTransfer(
@@ -344,6 +381,7 @@ class MainViewModel : ViewModel() {
                 logs = listOf("Transfer $transferMode ${formatRupiah(amount)} dari ${sourceWallet.name} ke ${destWallet.name} berhasil.") + state.logs
             )
         }
+        saveStateToPrefs()
     }
 
     fun addWallet(name: String, balance: Long, accountNumber: String, type: String) {
@@ -361,6 +399,7 @@ class MainViewModel : ViewModel() {
                 logs = listOf("Wallet baru '${newWallet.name}' berhasil ditambahkan.") + state.logs
             )
         }
+        saveStateToPrefs()
     }
 
     fun editWallet(
@@ -397,6 +436,7 @@ class MainViewModel : ViewModel() {
                 logs = listOf("Wallet '$nameTrimmed' berhasil diperbarui.") + state.logs
             )
         }
+        saveStateToPrefs()
     }
 
     fun deleteWallet(id: String) {
@@ -412,6 +452,7 @@ class MainViewModel : ViewModel() {
                 logs = listOf("Wallet '$walletName' berhasil dihapus.") + state.logs
             )
         }
+        saveStateToPrefs()
     }
 
     fun addIncomeCategory(categoryName: String) {
@@ -424,6 +465,7 @@ class MainViewModel : ViewModel() {
                 logs = listOf("Kategori Pemasukan '$trimmed' berhasil ditambahkan.") + state.logs
             )
         }
+        saveStateToPrefs()
     }
 
     fun editIncomeCategory(oldCategory: String, newCategory: String) {
@@ -444,6 +486,7 @@ class MainViewModel : ViewModel() {
                 logs = listOf("Kategori Pemasukan '$oldCategory' diubah menjadi '$trimmed'.") + state.logs
             )
         }
+        saveStateToPrefs()
     }
 
     fun deleteIncomeCategory(categoryName: String) {
@@ -454,6 +497,7 @@ class MainViewModel : ViewModel() {
                 logs = listOf("Kategori Pemasukan '$categoryName' berhasil dihapus.") + state.logs
             )
         }
+        saveStateToPrefs()
     }
 
     fun addExpenseCategory(categoryName: String) {
@@ -466,6 +510,7 @@ class MainViewModel : ViewModel() {
                 logs = listOf("Kategori Pengeluaran '$trimmed' berhasil ditambahkan.") + state.logs
             )
         }
+        saveStateToPrefs()
     }
 
     fun editExpenseCategory(oldCategory: String, newCategory: String) {
@@ -486,6 +531,7 @@ class MainViewModel : ViewModel() {
                 logs = listOf("Kategori Pengeluaran '$oldCategory' diubah menjadi '$trimmed'.") + state.logs
             )
         }
+        saveStateToPrefs()
     }
 
     fun deleteExpenseCategory(categoryName: String) {
@@ -496,6 +542,7 @@ class MainViewModel : ViewModel() {
                 logs = listOf("Kategori Pengeluaran '$categoryName' berhasil dihapus.") + state.logs
             )
         }
+        saveStateToPrefs()
     }
 
     fun incrementCounter() {
@@ -541,6 +588,7 @@ class MainViewModel : ViewModel() {
                 logs = listOf("Mode tema diubah ke ${if (nextState) "Gelap" else "Terang"}") + state.logs
             )
         }
+        saveStateToPrefs()
     }
 
     fun clearLogs() {
@@ -605,6 +653,7 @@ class MainViewModel : ViewModel() {
                 logs = listOf("Transaksi '${newTitle.trim()}' berhasil diperbarui.") + state.logs
             )
         }
+        saveStateToPrefs()
     }
 
     fun deleteTransaction(id: String) {
@@ -629,6 +678,7 @@ class MainViewModel : ViewModel() {
                 logs = listOf("Transaksi '${tx.title}' (${formatRupiah(tx.amount)}) berhasil dihapus.") + state.logs
             )
         }
+        saveStateToPrefs()
     }
 
     fun exportBackupJson(): String {
@@ -703,7 +753,7 @@ class MainViewModel : ViewModel() {
         return root.toString(2)
     }
 
-    fun restoreDatabaseFromJson(jsonStr: String): Boolean {
+    private fun restoreDatabaseFromJsonInternal(jsonStr: String): Boolean {
         return try {
             val root = JSONObject(jsonStr)
             val walletsList = mutableListOf<Wallet>()
@@ -797,15 +847,14 @@ class MainViewModel : ViewModel() {
                     expCatList.add(arr.getString(i))
                 }
             }
-
             _uiState.update { state ->
                 state.copy(
-                    wallets = if (walletsList.isNotEmpty()) walletsList else state.wallets,
+                    wallets = if (root.has("wallets")) walletsList else state.wallets,
                     transactions = txList,
                     debts = debtsList,
                     receivables = recList,
-                    incomeCategories = if (incCatList.isNotEmpty()) incCatList else state.incomeCategories,
-                    expenseCategories = if (expCatList.isNotEmpty()) expCatList else state.expenseCategories,
+                    incomeCategories = if (root.has("incomeCategories") && incCatList.isNotEmpty()) incCatList else state.incomeCategories,
+                    expenseCategories = if (root.has("expenseCategories") && expCatList.isNotEmpty()) expCatList else state.expenseCategories,
                     logs = listOf("Database berhasil di-restore dari data JSON.") + state.logs
                 )
             }
@@ -815,12 +864,26 @@ class MainViewModel : ViewModel() {
         }
     }
 
+    fun restoreDatabaseFromJson(jsonStr: String): Boolean {
+        val success = restoreDatabaseFromJsonInternal(jsonStr)
+        if (success) {
+            saveStateToPrefs()
+        }
+        return success
+    }
+
     fun resetDatabase() {
+        prefs.edit().clear().apply()
         _uiState.update {
             MainUiState(
-                logs = listOf("Database telah di-reset ke kondisi awal.")
+                wallets = emptyList(),
+                transactions = emptyList(),
+                debts = emptyList(),
+                receivables = emptyList(),
+                logs = listOf("Database telah di-reset. Semua data sampel telah dibersihkan.")
             )
         }
+        saveStateToPrefs()
     }
 }
 

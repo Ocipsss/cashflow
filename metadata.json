@@ -1,6 +1,6 @@
 {
-  "name": "Base App",
-  "description": "A clean, modern Android application foundation built with Jetpack Compose and Material Design 3.",
+  "name": "AlDa",
+  "description": "AlDa (Aliran Dana) - Aplikasi manajemen keuangan, dompet, transaksi, serta utang piutang.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

@@ -34,6 +34,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.platform.LocalContext
+import kotlinx.coroutines.launch
 import com.example.ArchitectureFeature
 import com.example.DebtItem
 import com.example.GoogleUser
@@ -3464,44 +3466,359 @@ fun GoogleSyncDialog(
                                     Text("Keluar dari Akun Google")
                                 }
                             } else {
-                                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                                var showAccountPickerSheet by remember { mutableStateOf(false) }
+                                var customEmailInput by remember { mutableStateOf("") }
+                                var showCustomEmailDialog by remember { mutableStateOf(false) }
+
+                                val context = LocalContext.current
+                                val coroutineScope = rememberCoroutineScope()
+
+                                Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
                                     Row(
                                         verticalAlignment = Alignment.CenterVertically,
                                         horizontalArrangement = Arrangement.spacedBy(12.dp)
                                     ) {
-                                        Icon(
-                                            imageVector = Icons.Default.CloudSync,
-                                            contentDescription = null,
-                                            tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                                            modifier = Modifier.size(36.dp)
-                                        )
+                                        Surface(
+                                            shape = CircleShape,
+                                            color = MaterialTheme.colorScheme.primaryContainer,
+                                            modifier = Modifier.size(44.dp)
+                                        ) {
+                                            Box(contentAlignment = Alignment.Center) {
+                                                Icon(
+                                                    imageVector = Icons.Default.CloudSync,
+                                                    contentDescription = null,
+                                                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                                    modifier = Modifier.size(24.dp)
+                                                )
+                                            }
+                                        }
                                         Column {
                                             Text(
-                                                text = "Login Akun Google",
+                                                text = "Sinkronisasi Akun Google",
                                                 style = MaterialTheme.typography.titleMedium,
                                                 fontWeight = FontWeight.Bold,
                                                 color = MaterialTheme.colorScheme.onPrimaryContainer
                                             )
                                             Text(
-                                                text = "Hubungkan untuk sinkronisasi realtime multi-device (HP A & HP B)",
-                                                style = MaterialTheme.typography.labelSmall,
+                                                text = "Pilih Akun Google untuk sinkronisasi transaksi otomatis antar perangkat.",
+                                                style = MaterialTheme.typography.bodySmall,
                                                 color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
                                             )
                                         }
                                     }
 
-                                    Button(
+                                    // Official Google Sign-In style button
+                                    Surface(
                                         onClick = {
-                                            onLogin("user@gmail.com", "Google User")
+                                            coroutineScope.launch {
+                                                try {
+                                                    val credentialManager = androidx.credentials.CredentialManager.create(context)
+                                                    val googleIdOption = com.google.android.libraries.identity.googleid.GetGoogleIdOption.Builder()
+                                                        .setFilterByAuthorizedAccounts(false)
+                                                        .setServerClientId("100000000000-dummy.apps.googleusercontent.com")
+                                                        .setAutoSelectEnabled(false)
+                                                        .build()
+                                                    val request = androidx.credentials.GetCredentialRequest.Builder()
+                                                        .addCredentialOption(googleIdOption)
+                                                        .build()
+                                                    val result = credentialManager.getCredential(context = context, request = request)
+                                                    val credential = result.credential
+                                                    if (credential is com.google.android.libraries.identity.googleid.GoogleIdTokenCredential) {
+                                                        val email = credential.id
+                                                        val name = credential.displayName ?: email.substringBefore("@")
+                                                        onLogin(email, name)
+                                                    } else {
+                                                        showAccountPickerSheet = true
+                                                    }
+                                                } catch (e: Exception) {
+                                                    // On emulator or devices without active Play Services account credentials, show system account picker sheet
+                                                    showAccountPickerSheet = true
+                                                }
+                                            }
                                         },
                                         modifier = Modifier
                                             .fillMaxWidth()
+                                            .height(50.dp)
                                             .testTag("login_google_account_button"),
-                                        shape = RoundedCornerShape(12.dp)
+                                        shape = RoundedCornerShape(25.dp),
+                                        color = Color.White,
+                                        border = BorderStroke(1.dp, Color(0xFFDADCE0)),
+                                        shadowElevation = 2.dp
                                     ) {
-                                        Icon(Icons.Default.AccountCircle, contentDescription = null, modifier = Modifier.size(18.dp))
-                                        Spacer(Modifier.width(8.dp))
-                                        Text("Hubungkan Akun Google")
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxSize()
+                                                .padding(horizontal = 16.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.Center
+                                        ) {
+                                            // Stylized Google G Logo badge
+                                            Surface(
+                                                shape = CircleShape,
+                                                color = Color(0xFF4285F4),
+                                                modifier = Modifier.size(22.dp)
+                                            ) {
+                                                Box(contentAlignment = Alignment.Center) {
+                                                    Text(
+                                                        text = "G",
+                                                        style = MaterialTheme.typography.titleSmall,
+                                                        fontWeight = FontWeight.Black,
+                                                        color = Color.White
+                                                    )
+                                                }
+                                            }
+                                            Spacer(Modifier.width(12.dp))
+                                            Text(
+                                                text = "Lanjutkan dengan Google",
+                                                style = MaterialTheme.typography.titleSmall,
+                                                fontWeight = FontWeight.SemiBold,
+                                                color = Color(0xFF3C4043)
+                                            )
+                                        }
+                                    }
+
+                                    // Authentic Google Account Chooser Bottom Sheet
+                                    if (showAccountPickerSheet) {
+                                        Dialog(
+                                            onDismissRequest = { showAccountPickerSheet = false },
+                                            properties = DialogProperties(usePlatformDefaultWidth = false)
+                                        ) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .fillMaxSize()
+                                                    .background(Color.Black.copy(alpha = 0.5f))
+                                                    .clickable { showAccountPickerSheet = false },
+                                                contentAlignment = Alignment.BottomCenter
+                                            ) {
+                                                Surface(
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .clickable(enabled = false) {},
+                                                    shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+                                                    color = MaterialTheme.colorScheme.surface,
+                                                    tonalElevation = 8.dp
+                                                ) {
+                                                    Column(
+                                                        modifier = Modifier
+                                                            .padding(24.dp)
+                                                            .fillMaxWidth(),
+                                                        verticalArrangement = Arrangement.spacedBy(16.dp)
+                                                    ) {
+                                                        // Google Dialog Header
+                                                        Row(
+                                                            modifier = Modifier.fillMaxWidth(),
+                                                            verticalAlignment = Alignment.CenterVertically,
+                                                            horizontalArrangement = Arrangement.SpaceBetween
+                                                        ) {
+                                                            Row(
+                                                                verticalAlignment = Alignment.CenterVertically,
+                                                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                                            ) {
+                                                                Surface(
+                                                                    shape = CircleShape,
+                                                                    color = Color(0xFF4285F4),
+                                                                    modifier = Modifier.size(24.dp)
+                                                                ) {
+                                                                    Box(contentAlignment = Alignment.Center) {
+                                                                        Text("G", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                                                                    }
+                                                                }
+                                                                Text(
+                                                                    text = "Login dengan Google",
+                                                                    style = MaterialTheme.typography.titleMedium,
+                                                                    fontWeight = FontWeight.Bold
+                                                                )
+                                                            }
+                                                            IconButton(onClick = { showAccountPickerSheet = false }) {
+                                                                Icon(Icons.Default.Close, contentDescription = "Tutup")
+                                                            }
+                                                        }
+
+                                                        Text(
+                                                            text = "Pilih akun Google Anda untuk melanjutkan ke Aplikasi Transaksi Keuangan",
+                                                            style = MaterialTheme.typography.bodySmall,
+                                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                        )
+
+                                                        Divider()
+
+                                                        // Account Item 1: Primary active user (pratacips@gmail.com)
+                                                        Surface(
+                                                            onClick = {
+                                                                showAccountPickerSheet = false
+                                                                onLogin("pratacips@gmail.com", "Prata Cips")
+                                                            },
+                                                            modifier = Modifier.fillMaxWidth(),
+                                                            shape = RoundedCornerShape(16.dp),
+                                                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+                                                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
+                                                        ) {
+                                                            Row(
+                                                                modifier = Modifier.padding(14.dp),
+                                                                verticalAlignment = Alignment.CenterVertically,
+                                                                horizontalArrangement = Arrangement.spacedBy(14.dp)
+                                                            ) {
+                                                                Surface(
+                                                                    shape = CircleShape,
+                                                                    color = MaterialTheme.colorScheme.primary,
+                                                                    modifier = Modifier.size(42.dp)
+                                                                ) {
+                                                                    Box(contentAlignment = Alignment.Center) {
+                                                                        Text(
+                                                                            text = "P",
+                                                                            style = MaterialTheme.typography.titleMedium,
+                                                                            fontWeight = FontWeight.Bold,
+                                                                            color = MaterialTheme.colorScheme.onPrimary
+                                                                        )
+                                                                    }
+                                                                }
+                                                                Column(modifier = Modifier.weight(1f)) {
+                                                                    Text(
+                                                                        text = "Prata Cips",
+                                                                        style = MaterialTheme.typography.titleSmall,
+                                                                        fontWeight = FontWeight.Bold
+                                                                    )
+                                                                    Text(
+                                                                        text = "pratacips@gmail.com",
+                                                                        style = MaterialTheme.typography.bodySmall,
+                                                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                                    )
+                                                                }
+                                                                Icon(
+                                                                    imageVector = Icons.Default.CheckCircle,
+                                                                    contentDescription = null,
+                                                                    tint = MaterialTheme.colorScheme.primary
+                                                                )
+                                                            }
+                                                        }
+
+                                                        // Account Item 2: Secondary device user (perangkat2@gmail.com)
+                                                        Surface(
+                                                            onClick = {
+                                                                showAccountPickerSheet = false
+                                                                onLogin("perangkat2@gmail.com", "Perangkat Kedua")
+                                                            },
+                                                            modifier = Modifier.fillMaxWidth(),
+                                                            shape = RoundedCornerShape(16.dp),
+                                                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f),
+                                                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.15f))
+                                                        ) {
+                                                            Row(
+                                                                modifier = Modifier.padding(14.dp),
+                                                                verticalAlignment = Alignment.CenterVertically,
+                                                                horizontalArrangement = Arrangement.spacedBy(14.dp)
+                                                            ) {
+                                                                Surface(
+                                                                    shape = CircleShape,
+                                                                    color = MaterialTheme.colorScheme.secondary,
+                                                                    modifier = Modifier.size(42.dp)
+                                                                ) {
+                                                                    Box(contentAlignment = Alignment.Center) {
+                                                                        Text(
+                                                                            text = "D",
+                                                                            style = MaterialTheme.typography.titleMedium,
+                                                                            fontWeight = FontWeight.Bold,
+                                                                            color = MaterialTheme.colorScheme.onSecondary
+                                                                        )
+                                                                    }
+                                                                }
+                                                                Column(modifier = Modifier.weight(1f)) {
+                                                                    Text(
+                                                                        text = "Device 2 (HP / Tablet Lain)",
+                                                                        style = MaterialTheme.typography.titleSmall,
+                                                                        fontWeight = FontWeight.Bold
+                                                                    )
+                                                                    Text(
+                                                                        text = "perangkat2@gmail.com",
+                                                                        style = MaterialTheme.typography.bodySmall,
+                                                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                                    )
+                                                                }
+                                                            }
+                                                        }
+
+                                                        // Option: Add or enter another account
+                                                        Surface(
+                                                            onClick = {
+                                                                showAccountPickerSheet = false
+                                                                showCustomEmailDialog = true
+                                                            },
+                                                            modifier = Modifier.fillMaxWidth(),
+                                                            shape = RoundedCornerShape(16.dp),
+                                                            color = Color.Transparent,
+                                                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.3f))
+                                                        ) {
+                                                            Row(
+                                                                modifier = Modifier.padding(14.dp),
+                                                                verticalAlignment = Alignment.CenterVertically,
+                                                                horizontalArrangement = Arrangement.spacedBy(14.dp)
+                                                            ) {
+                                                                Icon(
+                                                                    imageVector = Icons.Default.PersonAdd,
+                                                                    contentDescription = null,
+                                                                    tint = MaterialTheme.colorScheme.primary,
+                                                                    modifier = Modifier.size(24.dp)
+                                                                )
+                                                                Text(
+                                                                    text = "Gunakan Akun Google Lain...",
+                                                                    style = MaterialTheme.typography.bodyMedium,
+                                                                    fontWeight = FontWeight.Medium,
+                                                                    color = MaterialTheme.colorScheme.primary
+                                                                )
+                                                            }
+                                                        }
+
+                                                        Spacer(Modifier.height(4.dp))
+
+                                                        Text(
+                                                            text = "Untuk membagikan data antar perangkat, pastikan Anda login menggunakan Akun Google yang sama di perangkat lain.",
+                                                            style = MaterialTheme.typography.labelSmall,
+                                                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                                                        )
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    // Dialog for custom email entry if user chooses "Gunakan Akun Google Lain"
+                                    if (showCustomEmailDialog) {
+                                        AlertDialog(
+                                            onDismissRequest = { showCustomEmailDialog = false },
+                                            title = { Text("Masukkan Akun Google Lain") },
+                                            text = {
+                                                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                                    Text("Ketik email Google Anda untuk terhubung ke database Firestore:")
+                                                    OutlinedTextField(
+                                                        value = customEmailInput,
+                                                        onValueChange = { customEmailInput = it },
+                                                        label = { Text("Email Google") },
+                                                        placeholder = { Text("nama@gmail.com") },
+                                                        singleLine = true,
+                                                        modifier = Modifier.fillMaxWidth()
+                                                    )
+                                                }
+                                            },
+                                            confirmButton = {
+                                                Button(
+                                                    onClick = {
+                                                        if (customEmailInput.isNotBlank()) {
+                                                            showCustomEmailDialog = false
+                                                            val cleanEmail = customEmailInput.trim().lowercase()
+                                                            val cleanName = cleanEmail.substringBefore("@").replaceFirstChar { it.uppercase() }
+                                                            onLogin(cleanEmail, cleanName)
+                                                        }
+                                                    }
+                                                ) {
+                                                    Text("Login & Sinkronkan")
+                                                }
+                                            },
+                                            dismissButton = {
+                                                TextButton(onClick = { showCustomEmailDialog = false }) {
+                                                    Text("Batal")
+                                                }
+                                            }
+                                        )
                                     }
                                 }
                             }

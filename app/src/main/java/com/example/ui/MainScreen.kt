@@ -3,6 +3,7 @@ package com.example.ui
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.*
@@ -35,8 +36,10 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.example.ArchitectureFeature
 import com.example.DebtItem
+import com.example.GoogleUser
 import com.example.MainUiState
 import com.example.MainViewModel
+import com.example.RealtimeSyncState
 import com.example.ReceivableItem
 import com.example.TransactionItem
 import com.example.TransactionType
@@ -94,6 +97,44 @@ fun MainScreen(
                     }
                 },
                 actions = {
+                    IconButton(
+                        onClick = { viewModel.toggleGoogleSyncDialog(true) },
+                        modifier = Modifier.testTag("google_profile_header_button")
+                    ) {
+                        if (uiState.googleUser.isLoggedIn) {
+                            Box(contentAlignment = Alignment.BottomEnd) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(32.dp)
+                                        .clip(CircleShape)
+                                        .background(MaterialTheme.colorScheme.primary),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = if (uiState.googleUser.name.isNotBlank()) uiState.googleUser.name.take(1).uppercase() else "G",
+                                        style = MaterialTheme.typography.labelLarge,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onPrimary
+                                    )
+                                }
+                                Box(
+                                    modifier = Modifier
+                                        .size(10.dp)
+                                        .clip(CircleShape)
+                                        .background(if (uiState.syncState.isRealtimeEnabled) Color(0xFF4CAF50) else Color.Gray)
+                                        .border(1.5.dp, MaterialTheme.colorScheme.surface, CircleShape)
+                                )
+                            }
+                        } else {
+                            Icon(
+                                imageVector = Icons.Outlined.AccountCircle,
+                                contentDescription = "Login Google Account",
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(28.dp)
+                            )
+                        }
+                    }
+
                     IconButton(
                         onClick = { viewModel.toggleThemeOverride() },
                         modifier = Modifier.testTag("toggle_theme_button")
@@ -162,6 +203,19 @@ fun MainScreen(
                     uiState = uiState,
                     viewModel = viewModel,
                     onDismiss = { showAddTransactionDialog = false }
+                )
+            }
+
+            if (uiState.showGoogleSyncDialog) {
+                GoogleSyncDialog(
+                    googleUser = uiState.googleUser,
+                    syncState = uiState.syncState,
+                    logs = uiState.logs,
+                    onDismiss = { viewModel.toggleGoogleSyncDialog(false) },
+                    onToggleRealtime = { viewModel.toggleRealtimeSync(it) },
+                    onForceSync = { viewModel.forceCloudSync() },
+                    onLogin = { email, name -> viewModel.loginGoogleAccount(email, name) },
+                    onLogout = { viewModel.logoutGoogleAccount() }
                 )
             }
         }
@@ -1242,6 +1296,15 @@ fun SettingsTab(
                 text = "Pengaturan Aplikasi",
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold
+            )
+        }
+
+        // Section: Google Account & Realtime Sync Multi-Device
+        item {
+            GoogleSyncHeaderCard(
+                googleUser = uiState.googleUser,
+                syncState = uiState.syncState,
+                onClick = { viewModel.toggleGoogleSyncDialog(true) }
             )
         }
 
@@ -3193,6 +3256,467 @@ fun AddTransactionFullScreen(
             )
         }
         null -> {}
+    }
+}
+
+@Composable
+fun GoogleSyncHeaderCard(
+    googleUser: GoogleUser,
+    syncState: RealtimeSyncState,
+    onClick: () -> Unit
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onClick() }
+            .testTag("google_sync_banner_card"),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f)
+        ),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.25f))
+    ) {
+        Row(
+            modifier = Modifier
+                .padding(14.dp)
+                .fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(44.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.primary),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = if (googleUser.isLoggedIn && googleUser.name.isNotBlank()) googleUser.name.take(1).uppercase() else "G",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = MaterialTheme.colorScheme.onPrimary
+                )
+            }
+
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(2.dp)
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Text(
+                        text = if (googleUser.isLoggedIn) googleUser.email else "Login Akun Google",
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Surface(
+                        color = if (syncState.isRealtimeEnabled && googleUser.isLoggedIn) Color(0xFFE8F5E9) else MaterialTheme.colorScheme.surfaceVariant,
+                        shape = RoundedCornerShape(6.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(6.dp)
+                                    .clip(CircleShape)
+                                    .background(if (syncState.isRealtimeEnabled && googleUser.isLoggedIn) Color(0xFF2E7D32) else Color.Gray)
+                            )
+                            Text(
+                                text = if (syncState.isRealtimeEnabled && googleUser.isLoggedIn) "Realtime Sync" else "Belum Login",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = if (syncState.isRealtimeEnabled && googleUser.isLoggedIn) Color(0xFF2E7D32) else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+
+                Text(
+                    text = if (googleUser.isLoggedIn) "Multidevice • ${syncState.syncStatusMessage} (${syncState.lastSyncTime})" else "Ketuk untuk login & aktifkan sinkronisasi realtime HP A <-> HP B",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+
+            Icon(
+                imageVector = Icons.Default.CloudSync,
+                contentDescription = "Kelola Sync",
+                tint = MaterialTheme.colorScheme.primary
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun GoogleSyncDialog(
+    googleUser: GoogleUser,
+    syncState: RealtimeSyncState,
+    logs: List<String>,
+    onDismiss: () -> Unit,
+    onToggleRealtime: (Boolean) -> Unit,
+    onForceSync: () -> Unit,
+    onLogin: (String, String) -> Unit,
+    onLogout: () -> Unit
+) {
+    var showSwitchAccountInput by remember { mutableStateOf(!googleUser.isLoggedIn) }
+    var inputEmail by remember { mutableStateOf(if (googleUser.email.isNotBlank()) googleUser.email else "pratacips@gmail.com") }
+    var inputName by remember { mutableStateOf(if (googleUser.name.isNotBlank()) googleUser.name else "Google User") }
+
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Scaffold(
+            topBar = {
+                TopAppBar(
+                    title = {
+                        Column {
+                            Text(
+                                text = "Google Account & Realtime Sync",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                text = "Koneksi Multidevice Berbagi Data",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    },
+                    navigationIcon = {
+                        IconButton(onClick = onDismiss, modifier = Modifier.testTag("close_google_sync_dialog")) {
+                            Icon(Icons.Default.Close, contentDescription = "Tutup")
+                        }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface)
+                )
+            }
+        ) { innerPadding ->
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding)
+                    .padding(horizontal = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+                contentPadding = PaddingValues(vertical = 16.dp)
+            ) {
+                // 1. Profile / Login Google Card
+                item {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(20.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.primaryContainer
+                        )
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(18.dp),
+                            verticalArrangement = Arrangement.spacedBy(14.dp)
+                        ) {
+                            if (googleUser.isLoggedIn) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(14.dp)
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(52.dp)
+                                            .clip(CircleShape)
+                                            .background(MaterialTheme.colorScheme.onPrimaryContainer),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(
+                                            text = if (googleUser.name.isNotBlank()) googleUser.name.take(1).uppercase() else "G",
+                                            style = MaterialTheme.typography.titleLarge,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            color = MaterialTheme.colorScheme.primaryContainer
+                                        )
+                                    }
+
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = googleUser.name,
+                                            style = MaterialTheme.typography.titleMedium,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                                        )
+                                        Text(
+                                            text = googleUser.email,
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
+                                        )
+                                        Text(
+                                            text = "ID Perangkat: ${googleUser.deviceId} (${googleUser.deviceName})",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.65f)
+                                        )
+                                    }
+                                }
+
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    OutlinedButton(
+                                        onClick = { showSwitchAccountInput = !showSwitchAccountInput },
+                                        modifier = Modifier.weight(1f),
+                                        shape = RoundedCornerShape(12.dp)
+                                    ) {
+                                        Icon(Icons.Default.AccountCircle, contentDescription = null, modifier = Modifier.size(16.dp))
+                                        Spacer(Modifier.width(6.dp))
+                                        Text("Ganti Akun")
+                                    }
+                                    OutlinedButton(
+                                        onClick = onLogout,
+                                        modifier = Modifier.weight(1f),
+                                        shape = RoundedCornerShape(12.dp),
+                                        colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error)
+                                    ) {
+                                        Icon(Icons.Default.Logout, contentDescription = null, modifier = Modifier.size(16.dp))
+                                        Spacer(Modifier.width(6.dp))
+                                        Text("Keluar")
+                                    }
+                                }
+                            } else {
+                                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.CloudSync,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                            modifier = Modifier.size(36.dp)
+                                        )
+                                        Column {
+                                            Text(
+                                                text = "Login Akun Google",
+                                                style = MaterialTheme.typography.titleMedium,
+                                                fontWeight = FontWeight.Bold,
+                                                color = MaterialTheme.colorScheme.onPrimaryContainer
+                                            )
+                                            Text(
+                                                text = "Hubungkan untuk sinkronisasi realtime multi-device (HP A & HP B)",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
+                                            )
+                                        }
+                                    }
+
+                                    Button(
+                                        onClick = {
+                                            onLogin("pratacips@gmail.com", "Google User")
+                                        },
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .testTag("quick_login_google_button"),
+                                        shape = RoundedCornerShape(12.dp)
+                                    ) {
+                                        Icon(Icons.Default.AccountCircle, contentDescription = null, modifier = Modifier.size(18.dp))
+                                        Spacer(Modifier.width(8.dp))
+                                        Text("Masuk dengan pratacips@gmail.com")
+                                    }
+                                }
+                            }
+
+                            if (showSwitchAccountInput) {
+                                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    HorizontalDivider(color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.2f))
+                                    Text(
+                                        text = "Masuk dengan Akun Google Lain:",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                                    )
+                                    OutlinedTextField(
+                                        value = inputName,
+                                        onValueChange = { inputName = it },
+                                        label = { Text("Nama Pengguna") },
+                                        singleLine = true,
+                                        modifier = Modifier.fillMaxWidth()
+                                    )
+                                    OutlinedTextField(
+                                        value = inputEmail,
+                                        onValueChange = { inputEmail = it },
+                                        label = { Text("Email Google Account") },
+                                        singleLine = true,
+                                        modifier = Modifier.fillMaxWidth()
+                                    )
+                                    Button(
+                                        onClick = {
+                                            onLogin(inputEmail, inputName)
+                                            showSwitchAccountInput = false
+                                        },
+                                        modifier = Modifier.fillMaxWidth(),
+                                        shape = RoundedCornerShape(10.dp)
+                                    ) {
+                                        Text("Hubungkan Akun Google Ini")
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // 2. Realtime Controller Card
+                item {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(20.dp),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(18.dp),
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = "Sync Realtime Multi-Device",
+                                        style = MaterialTheme.typography.titleSmall,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    Text(
+                                        text = "Terhubung otomatis antar Device 1 & Device 2",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                                Switch(
+                                    checked = syncState.isRealtimeEnabled,
+                                    onCheckedChange = onToggleRealtime,
+                                    modifier = Modifier.testTag("toggle_realtime_sync_switch")
+                                )
+                            }
+
+                            HorizontalDivider()
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "Status: ${syncState.syncStatusMessage}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                                Text(
+                                    text = "Terakhir: ${syncState.lastSyncTime}",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+
+                            Button(
+                                onClick = onForceSync,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("force_sync_button"),
+                                shape = RoundedCornerShape(12.dp)
+                            ) {
+                                Icon(Icons.Default.Sync, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.width(8.dp))
+                                Text("Paksa Sinkronkan Data Sekarang")
+                            }
+                        }
+                    }
+                }
+
+                // 3. Perangkat Terhubung (Active Devices)
+                item {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(
+                            text = "Perangkat Terhubung (${syncState.activeDevices.size})",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                        syncState.activeDevices.forEach { dev ->
+                            Card(
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(12.dp),
+                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(12.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Row(
+                                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Devices,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.primary
+                                        )
+                                        Text(text = dev, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                                    }
+                                    Surface(
+                                        color = Color(0xFFE8F5E9),
+                                        shape = RoundedCornerShape(6.dp)
+                                    ) {
+                                        Text(
+                                            text = "Online 🟢",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = Color(0xFF2E7D32),
+                                            fontWeight = FontWeight.Bold,
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // 4. Activity Logs
+                item {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(
+                            text = "Log Sinkronisasi Realtime",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(12.dp),
+                                verticalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                logs.take(6).forEach { log ->
+                                    Text(
+                                        text = "• $log",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 

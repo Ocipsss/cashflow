@@ -6,6 +6,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -1610,6 +1612,7 @@ fun EditTransactionDialog(
                     onValueChange = { amountStr = it.filter { c -> c.isDigit() } },
                     label = { Text("Nominal (Rp)") },
                     singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     modifier = Modifier
                         .fillMaxWidth()
                         .testTag("edit_tx_amount_input"),
@@ -2059,6 +2062,7 @@ fun AddEditWalletDialog(
                     label = { Text("Saldo (Rp)") },
                     placeholder = { Text("Contoh: 1000000") },
                     singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     modifier = Modifier
                         .fillMaxWidth()
                         .testTag("input_wallet_balance"),
@@ -2071,6 +2075,7 @@ fun AddEditWalletDialog(
                     label = { Text("Nomor Rekening / HP (Opsional)") },
                     placeholder = { Text("Contoh: 08123456789 atau 12345678") },
                     singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     modifier = Modifier
                         .fillMaxWidth()
                         .testTag("input_wallet_acc_num"),
@@ -2832,6 +2837,7 @@ fun AddTransactionFullScreen(
                                             label = { Text("Nominal Pemasukan (Rp) *") },
                                             placeholder = { Text("0") },
                                             singleLine = true,
+                                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                                             modifier = Modifier.fillMaxWidth().testTag("input_income_amount"),
                                             shape = RoundedCornerShape(12.dp)
                                         )
@@ -2907,6 +2913,7 @@ fun AddTransactionFullScreen(
                                             label = { Text("Nominal Pengeluaran (Rp) *") },
                                             placeholder = { Text("0") },
                                             singleLine = true,
+                                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                                             modifier = Modifier.fillMaxWidth().testTag("input_expense_amount"),
                                             shape = RoundedCornerShape(12.dp)
                                         )
@@ -3009,6 +3016,7 @@ fun AddTransactionFullScreen(
                                             label = { Text("Nominal Transfer (Rp) *") },
                                             placeholder = { Text("0") },
                                             singleLine = true,
+                                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                                             modifier = Modifier.fillMaxWidth().testTag("input_transfer_amount"),
                                             shape = RoundedCornerShape(12.dp)
                                         )

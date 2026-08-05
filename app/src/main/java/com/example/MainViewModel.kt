@@ -52,7 +52,8 @@ data class TransactionItem(
     val category: String,
     val amount: Long,
     val type: TransactionType,
-    val date: String
+    val date: String,
+    val note: String = ""
 )
 
 data class ArchitectureFeature(
@@ -214,7 +215,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 category = category,
                 amount = amount,
                 type = TransactionType.INCOME,
-                date = dateStr
+                date = dateStr,
+                note = note
             )
 
             state.copy(
@@ -254,7 +256,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     category = category,
                     amount = amount,
                     type = TransactionType.EXPENSE,
-                    date = dateStr
+                    date = dateStr,
+                    note = note
                 )
 
                 state.copy(
@@ -285,20 +288,36 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     dueDate = "Otomatis (Split)"
                 )
 
+                val newReceivable = bailoutWallet?.let { bWallet ->
+                    ReceivableItem(
+                        id = "r_${System.currentTimeMillis()}",
+                        walletId = bWallet.id,
+                        title = "Talangan Pengeluaran ($category)",
+                        sourceWalletName = mainWallet.name,
+                        amount = bailoutAmount,
+                        dueDate = "Otomatis (Split)"
+                    )
+                }
+
+                val splitInfo = "Dipotong ${mainWallet.name}: ${formatRupiah(mainWalletBalanceCovered)} | Talangan ${bailoutWallet?.name ?: "Talangan"}: ${formatRupiah(bailoutAmount)}"
+                val fullNote = if (note.isNotBlank()) "$note • $splitInfo" else splitInfo
+
                 val newTransaction = TransactionItem(
                     id = "t_${System.currentTimeMillis()}",
                     walletId = walletId,
                     walletName = mainWallet.name,
-                    title = "$titleText (Split dengan ${bailoutWallet?.name})",
+                    title = "$titleText (Split dengan ${bailoutWallet?.name ?: "Talangan"})",
                     category = category,
                     amount = amount,
                     type = TransactionType.EXPENSE,
-                    date = dateStr
+                    date = dateStr,
+                    note = fullNote
                 )
 
                 state.copy(
                     wallets = updatedWallets,
                     debts = listOf(newDebt) + state.debts,
+                    receivables = if (newReceivable != null) listOf(newReceivable) + state.receivables else state.receivables,
                     transactions = listOf(newTransaction) + state.transactions,
                     logs = listOf("Pengeluaran Split ${formatRupiah(amount)} (${mainWallet.name} + Talangan ${bailoutWallet?.name}) berhasil dicatat. Utang ${formatRupiah(bailoutAmount)} dibuat.") + state.logs
                 )
@@ -339,7 +358,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 category = transferMode,
                 amount = amount,
                 type = TransactionType.TRANSFER,
-                date = dateStr
+                date = dateStr,
+                note = note
             )
 
             var newDebts = state.debts
@@ -709,6 +729,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             obj.put("amount", t.amount)
             obj.put("type", t.type.name)
             obj.put("date", t.date)
+            obj.put("note", t.note)
             txArr.put(obj)
         }
         root.put("transactions", txArr)
@@ -790,7 +811,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                             category = obj.optString("category", ""),
                             amount = obj.optLong("amount", 0L),
                             type = tType,
-                            date = obj.optString("date", "")
+                            date = obj.optString("date", ""),
+                            note = obj.optString("note", "")
                         )
                     )
                 }

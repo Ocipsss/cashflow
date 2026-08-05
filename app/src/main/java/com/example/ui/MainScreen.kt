@@ -962,15 +962,18 @@ fun HistoryTab(
             }
         }
     }
-}
-
-@OptIn(ExperimentalLayoutApi::class)
+}@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun SettingsTab(
     uiState: MainUiState,
     viewModel: MainViewModel
 ) {
     var showAddWalletDialog by remember { mutableStateOf(false) }
+    var walletToEdit by remember { mutableStateOf<Wallet?>(null) }
+    var walletToDelete by remember { mutableStateOf<Wallet?>(null) }
+
+    var categoryToEdit by remember { mutableStateOf<Pair<String, Boolean>?>(null) }
+    var categoryToDelete by remember { mutableStateOf<Pair<String, Boolean>?>(null) }
 
     LazyColumn(
         modifier = Modifier
@@ -987,7 +990,7 @@ fun SettingsTab(
             )
         }
 
-        // Section: Tambah Dompet
+        // Section: Kelola Dompet (Tambah, Edit, Hapus)
         item {
             Card(
                 modifier = Modifier
@@ -1029,75 +1032,165 @@ fun SettingsTab(
                             }
                             Column {
                                 Text(
-                                    text = "Tambah Dompet Baru",
+                                    text = "Kelola Dompet Digital",
                                     style = MaterialTheme.typography.titleMedium,
                                     fontWeight = FontWeight.Bold
                                 )
                                 Text(
-                                    text = "Saat ini ada ${uiState.wallets.size} dompet aktif",
+                                    text = "${uiState.wallets.size} dompet aktif (Bisa Edit & Hapus)",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
                         }
 
-                        Button(
+                        FilledIconButton(
                             onClick = { showAddWalletDialog = true },
                             modifier = Modifier.testTag("open_add_wallet_dialog_button"),
                             shape = RoundedCornerShape(12.dp)
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Add,
-                                contentDescription = "Tambah Dompet",
-                                modifier = Modifier.size(18.dp)
+                                contentDescription = "Tambah Dompet"
                             )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("Tambah")
                         }
                     }
 
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
 
-                    // Preview Chips of Wallets
-                    FlowRow(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
+                    // Daftar Wallet dengan tombol Edit & Hapus
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         uiState.wallets.forEach { wallet ->
-                            AssistChip(
-                                onClick = { viewModel.selectWalletForDetail(wallet) },
-                                label = { Text(wallet.name) },
-                                leadingIcon = {
-                                    Icon(
-                                        imageVector = when (wallet.type) {
-                                            "Bank" -> Icons.Default.AccountBalance
-                                            "E-Wallet" -> Icons.Default.Smartphone
-                                            else -> Icons.Default.Payments
-                                        },
-                                        contentDescription = wallet.type,
-                                        modifier = Modifier.size(16.dp)
-                                    )
+                            Card(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("wallet_setting_item_${wallet.id}"),
+                                shape = RoundedCornerShape(14.dp),
+                                colors = CardDefaults.cardColors(
+                                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+                                ),
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .padding(12.dp)
+                                        .fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                        modifier = Modifier.weight(1f)
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(36.dp)
+                                                .clip(RoundedCornerShape(8.dp))
+                                                .background(
+                                                    when (wallet.type) {
+                                                        "Bank" -> MaterialTheme.colorScheme.primaryContainer
+                                                        "E-Wallet" -> MaterialTheme.colorScheme.secondaryContainer
+                                                        else -> MaterialTheme.colorScheme.tertiaryContainer
+                                                    }
+                                                ),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Icon(
+                                                imageVector = when (wallet.type) {
+                                                    "Bank" -> Icons.Default.AccountBalance
+                                                    "E-Wallet" -> Icons.Default.Smartphone
+                                                    else -> Icons.Default.Payments
+                                                },
+                                                contentDescription = wallet.type,
+                                                tint = when (wallet.type) {
+                                                    "Bank" -> MaterialTheme.colorScheme.onPrimaryContainer
+                                                    "E-Wallet" -> MaterialTheme.colorScheme.onSecondaryContainer
+                                                    else -> MaterialTheme.colorScheme.onTertiaryContainer
+                                                },
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                        }
+
+                                        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                            Text(
+                                                text = wallet.name,
+                                                style = MaterialTheme.typography.titleSmall,
+                                                fontWeight = FontWeight.Bold,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                            Text(
+                                                text = "${wallet.type} • ${if (wallet.accountNumber != "-") wallet.accountNumber else "Tunai"}",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                            Text(
+                                                text = formatRupiah(wallet.balance),
+                                                style = MaterialTheme.typography.bodySmall,
+                                                fontWeight = FontWeight.Bold,
+                                                color = MaterialTheme.colorScheme.primary
+                                            )
+                                        }
+                                    }
+
+                                    Row(
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        IconButton(
+                                            onClick = { walletToEdit = wallet },
+                                            modifier = Modifier
+                                                .size(36.dp)
+                                                .testTag("edit_wallet_${wallet.id}")
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Edit,
+                                                contentDescription = "Edit Dompet",
+                                                tint = MaterialTheme.colorScheme.primary,
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                        }
+                                        IconButton(
+                                            onClick = { walletToDelete = wallet },
+                                            modifier = Modifier
+                                                .size(36.dp)
+                                                .testTag("delete_wallet_${wallet.id}")
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Delete,
+                                                contentDescription = "Hapus Dompet",
+                                                tint = MaterialTheme.colorScheme.error,
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                        }
+                                    }
                                 }
-                            )
+                            }
                         }
                     }
                 }
             }
         }
 
-        // Section: Tambah Kategori (Pemasukan & Pengeluaran)
+        // Section: Kelola Kategori (Pemasukan & Pengeluaran)
         item {
             ManageCategoriesCard(
                 incomeCategories = uiState.incomeCategories,
                 expenseCategories = uiState.expenseCategories,
                 onAddIncomeCategory = { viewModel.addIncomeCategory(it) },
-                onAddExpenseCategory = { viewModel.addExpenseCategory(it) }
+                onAddExpenseCategory = { viewModel.addExpenseCategory(it) },
+                onEditIncomeCategory = { cat -> categoryToEdit = Pair(cat, true) },
+                onDeleteIncomeCategory = { cat -> categoryToDelete = Pair(cat, true) },
+                onEditExpenseCategory = { cat -> categoryToEdit = Pair(cat, false) },
+                onDeleteExpenseCategory = { cat -> categoryToDelete = Pair(cat, false) }
             )
         }
     }
 
     if (showAddWalletDialog) {
-        AddWalletDialog(
+        AddEditWalletDialog(
+            walletToEdit = null,
             onDismiss = { showAddWalletDialog = false },
             onSave = { name, balance, accNum, type ->
                 viewModel.addWallet(name, balance, accNum, type)
@@ -1105,17 +1198,73 @@ fun SettingsTab(
             }
         )
     }
+
+    walletToEdit?.let { wallet ->
+        AddEditWalletDialog(
+            walletToEdit = wallet,
+            onDismiss = { walletToEdit = null },
+            onSave = { name, balance, accNum, type ->
+                viewModel.editWallet(wallet.id, name, balance, accNum, type)
+                walletToEdit = null
+            }
+        )
+    }
+
+    walletToDelete?.let { wallet ->
+        ConfirmDeleteDialog(
+            title = "Hapus Dompet?",
+            message = "Apakah Anda yakin ingin menghapus dompet '${wallet.name}'?",
+            onDismiss = { walletToDelete = null },
+            onConfirm = {
+                viewModel.deleteWallet(wallet.id)
+                walletToDelete = null
+            }
+        )
+    }
+
+    categoryToEdit?.let { (catName, isIncome) ->
+        EditCategoryDialog(
+            categoryName = catName,
+            isIncome = isIncome,
+            onDismiss = { categoryToEdit = null },
+            onSave = { newName ->
+                if (isIncome) {
+                    viewModel.editIncomeCategory(catName, newName)
+                } else {
+                    viewModel.editExpenseCategory(catName, newName)
+                }
+                categoryToEdit = null
+            }
+        )
+    }
+
+    categoryToDelete?.let { (catName, isIncome) ->
+        ConfirmDeleteDialog(
+            title = "Hapus Kategori?",
+            message = "Apakah Anda yakin ingin menghapus kategori '$catName'?",
+            onDismiss = { categoryToDelete = null },
+            onConfirm = {
+                if (isIncome) {
+                    viewModel.deleteIncomeCategory(catName)
+                } else {
+                    viewModel.deleteExpenseCategory(catName)
+                }
+                categoryToDelete = null
+            }
+        )
+    }
 }
 
 @Composable
-fun AddWalletDialog(
+fun AddEditWalletDialog(
+    walletToEdit: Wallet? = null,
     onDismiss: () -> Unit,
     onSave: (name: String, balance: Long, accNumber: String, type: String) -> Unit
 ) {
-    var walletName by remember { mutableStateOf("") }
-    var initialBalanceStr by remember { mutableStateOf("") }
-    var accountNumber by remember { mutableStateOf("") }
-    var selectedType by remember { mutableStateOf("Bank") }
+    var walletName by remember { mutableStateOf(walletToEdit?.name ?: "") }
+    var initialBalanceStr by remember { mutableStateOf(walletToEdit?.balance?.toString() ?: "") }
+    var accountNumber by remember { mutableStateOf(walletToEdit?.accountNumber?.takeIf { it != "-" } ?: "") }
+    var selectedType by remember { mutableStateOf(walletToEdit?.type ?: "Bank") }
     val types = listOf("Bank", "E-Wallet", "Cash")
 
     Dialog(onDismissRequest = onDismiss) {
@@ -1140,7 +1289,7 @@ fun AddWalletDialog(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = "Tambah Dompet Baru",
+                        text = if (walletToEdit != null) "Edit Dompet" else "Tambah Dompet Baru",
                         style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.Bold
                     )
@@ -1164,7 +1313,7 @@ fun AddWalletDialog(
                 OutlinedTextField(
                     value = initialBalanceStr,
                     onValueChange = { initialBalanceStr = it.filter { char -> char.isDigit() } },
-                    label = { Text("Saldo Awal (Rp)") },
+                    label = { Text("Saldo (Rp)") },
                     placeholder = { Text("Contoh: 1000000") },
                     singleLine = true,
                     modifier = Modifier
@@ -1225,7 +1374,7 @@ fun AddWalletDialog(
                         modifier = Modifier.testTag("save_wallet_button"),
                         shape = RoundedCornerShape(12.dp)
                     ) {
-                        Text("Simpan Dompet")
+                        Text(if (walletToEdit != null) "Simpan Perubahan" else "Simpan Dompet")
                     }
                 }
             }
@@ -1239,7 +1388,11 @@ fun ManageCategoriesCard(
     incomeCategories: List<String>,
     expenseCategories: List<String>,
     onAddIncomeCategory: (String) -> Unit,
-    onAddExpenseCategory: (String) -> Unit
+    onAddExpenseCategory: (String) -> Unit,
+    onEditIncomeCategory: (String) -> Unit,
+    onDeleteIncomeCategory: (String) -> Unit,
+    onEditExpenseCategory: (String) -> Unit,
+    onDeleteExpenseCategory: (String) -> Unit
 ) {
     var newIncomeCategoryName by remember { mutableStateOf("") }
     var newExpenseCategoryName by remember { mutableStateOf("") }
@@ -1279,12 +1432,12 @@ fun ManageCategoriesCard(
                 }
                 Column {
                     Text(
-                        text = "Tambah Kategori",
+                        text = "Kelola Kategori",
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold
                     )
                     Text(
-                        text = "Atur kategori transaksi pemasukan & pengeluaran",
+                        text = "Tambah, edit nama, atau hapus kategori transaksi",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -1313,16 +1466,41 @@ fun ManageCategoriesCard(
                     )
                 }
 
-                // Existing Income Category Chips
+                // Existing Income Category Chips with Edit & Delete actions
                 FlowRow(
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                     verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     incomeCategories.forEach { category ->
-                        SuggestionChip(
-                            onClick = { },
+                        InputChip(
+                            selected = false,
+                            onClick = { onEditIncomeCategory(category) },
                             label = { Text(category) },
-                            colors = SuggestionChipDefaults.suggestionChipColors(
+                            trailingIcon = {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(2.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Edit,
+                                        contentDescription = "Edit $category",
+                                        modifier = Modifier
+                                            .size(14.dp)
+                                            .clickable { onEditIncomeCategory(category) },
+                                        tint = MaterialTheme.colorScheme.primary
+                                    )
+                                    Spacer(modifier = Modifier.width(2.dp))
+                                    Icon(
+                                        imageVector = Icons.Default.Close,
+                                        contentDescription = "Hapus $category",
+                                        modifier = Modifier
+                                            .size(14.dp)
+                                            .clickable { onDeleteIncomeCategory(category) },
+                                        tint = MaterialTheme.colorScheme.error
+                                    )
+                                }
+                            },
+                            colors = InputChipDefaults.inputChipColors(
                                 containerColor = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.4f)
                             )
                         )
@@ -1384,16 +1562,41 @@ fun ManageCategoriesCard(
                     )
                 }
 
-                // Existing Expense Category Chips
+                // Existing Expense Category Chips with Edit & Delete actions
                 FlowRow(
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                     verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     expenseCategories.forEach { category ->
-                        SuggestionChip(
-                            onClick = { },
+                        InputChip(
+                            selected = false,
+                            onClick = { onEditExpenseCategory(category) },
                             label = { Text(category) },
-                            colors = SuggestionChipDefaults.suggestionChipColors(
+                            trailingIcon = {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(2.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Edit,
+                                        contentDescription = "Edit $category",
+                                        modifier = Modifier
+                                            .size(14.dp)
+                                            .clickable { onEditExpenseCategory(category) },
+                                        tint = MaterialTheme.colorScheme.primary
+                                    )
+                                    Spacer(modifier = Modifier.width(2.dp))
+                                    Icon(
+                                        imageVector = Icons.Default.Close,
+                                        contentDescription = "Hapus $category",
+                                        modifier = Modifier
+                                            .size(14.dp)
+                                            .clickable { onDeleteExpenseCategory(category) },
+                                        tint = MaterialTheme.colorScheme.error
+                                    )
+                                }
+                            },
+                            colors = InputChipDefaults.inputChipColors(
                                 containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.4f)
                             )
                         )
@@ -1434,6 +1637,115 @@ fun ManageCategoriesCard(
             }
         }
     }
+}
+
+@Composable
+fun EditCategoryDialog(
+    categoryName: String,
+    isIncome: Boolean,
+    onDismiss: () -> Unit,
+    onSave: (newName: String) -> Unit
+) {
+    var name by remember { mutableStateOf(categoryName) }
+
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(
+            shape = RoundedCornerShape(24.dp),
+            color = MaterialTheme.colorScheme.surface,
+            tonalElevation = 6.dp,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(12.dp)
+                .testTag("edit_category_dialog")
+        ) {
+            Column(
+                modifier = Modifier
+                    .padding(20.dp)
+                    .fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = if (isIncome) "Edit Kategori Pemasukan" else "Edit Kategori Pengeluaran",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                    IconButton(onClick = onDismiss) {
+                        Icon(Icons.Default.Close, contentDescription = "Tutup")
+                    }
+                }
+
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    label = { Text("Nama Kategori") },
+                    singleLine = true,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("input_edit_category_name"),
+                    shape = RoundedCornerShape(12.dp)
+                )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    TextButton(onClick = onDismiss) {
+                        Text("Batal")
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Button(
+                        onClick = { onSave(name) },
+                        enabled = name.isNotBlank(),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Text("Simpan Perubahan")
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun ConfirmDeleteDialog(
+    title: String,
+    message: String,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(text = title, fontWeight = FontWeight.Bold)
+        },
+        text = {
+            Text(text = message)
+        },
+        confirmButton = {
+            Button(
+                onClick = onConfirm,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.error,
+                    contentColor = MaterialTheme.colorScheme.onError
+                ),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Text("Hapus")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Batal")
+            }
+        },
+        shape = RoundedCornerShape(20.dp)
+    )
 }
 
 @Composable

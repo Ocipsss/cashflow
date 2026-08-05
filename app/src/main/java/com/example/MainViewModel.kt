@@ -361,6 +361,57 @@ class MainViewModel : ViewModel() {
         }
     }
 
+    fun editWallet(
+        id: String,
+        newName: String,
+        newBalance: Long,
+        newAccountNumber: String,
+        newType: String
+    ) {
+        val nameTrimmed = newName.trim()
+        if (nameTrimmed.isBlank()) return
+        _uiState.update { state ->
+            val updatedWallets = state.wallets.map { w ->
+                if (w.id == id) {
+                    w.copy(
+                        name = nameTrimmed,
+                        balance = newBalance,
+                        accountNumber = newAccountNumber.ifBlank { "-" },
+                        type = newType
+                    )
+                } else w
+            }
+            val updatedTransactions = state.transactions.map { t ->
+                if (t.walletId == id) t.copy(walletName = nameTrimmed) else t
+            }
+            val updatedSelectedWallet = if (state.selectedWalletDetail?.id == id) {
+                updatedWallets.find { it.id == id }
+            } else state.selectedWalletDetail
+
+            state.copy(
+                wallets = updatedWallets,
+                transactions = updatedTransactions,
+                selectedWalletDetail = updatedSelectedWallet,
+                logs = listOf("Wallet '$nameTrimmed' berhasil diperbarui.") + state.logs
+            )
+        }
+    }
+
+    fun deleteWallet(id: String) {
+        _uiState.update { state ->
+            val targetWallet = state.wallets.find { it.id == id }
+            val walletName = targetWallet?.name ?: "Wallet"
+            val updatedWallets = state.wallets.filter { it.id != id }
+            val updatedSelected = if (state.selectedWalletDetail?.id == id) null else state.selectedWalletDetail
+
+            state.copy(
+                wallets = updatedWallets,
+                selectedWalletDetail = updatedSelected,
+                logs = listOf("Wallet '$walletName' berhasil dihapus.") + state.logs
+            )
+        }
+    }
+
     fun addIncomeCategory(categoryName: String) {
         val trimmed = categoryName.trim()
         if (trimmed.isBlank()) return
@@ -373,6 +424,36 @@ class MainViewModel : ViewModel() {
         }
     }
 
+    fun editIncomeCategory(oldCategory: String, newCategory: String) {
+        val trimmed = newCategory.trim()
+        if (trimmed.isBlank() || oldCategory == trimmed) return
+        _uiState.update { state ->
+            val updatedCategories = state.incomeCategories.map {
+                if (it == oldCategory) trimmed else it
+            }
+            val updatedTransactions = state.transactions.map { t ->
+                if (t.type == TransactionType.INCOME && t.category == oldCategory) {
+                    t.copy(category = trimmed)
+                } else t
+            }
+            state.copy(
+                incomeCategories = updatedCategories,
+                transactions = updatedTransactions,
+                logs = listOf("Kategori Pemasukan '$oldCategory' diubah menjadi '$trimmed'.") + state.logs
+            )
+        }
+    }
+
+    fun deleteIncomeCategory(categoryName: String) {
+        _uiState.update { state ->
+            val updatedCategories = state.incomeCategories.filter { it != categoryName }
+            state.copy(
+                incomeCategories = updatedCategories,
+                logs = listOf("Kategori Pemasukan '$categoryName' berhasil dihapus.") + state.logs
+            )
+        }
+    }
+
     fun addExpenseCategory(categoryName: String) {
         val trimmed = categoryName.trim()
         if (trimmed.isBlank()) return
@@ -381,6 +462,36 @@ class MainViewModel : ViewModel() {
             else state.copy(
                 expenseCategories = state.expenseCategories + trimmed,
                 logs = listOf("Kategori Pengeluaran '$trimmed' berhasil ditambahkan.") + state.logs
+            )
+        }
+    }
+
+    fun editExpenseCategory(oldCategory: String, newCategory: String) {
+        val trimmed = newCategory.trim()
+        if (trimmed.isBlank() || oldCategory == trimmed) return
+        _uiState.update { state ->
+            val updatedCategories = state.expenseCategories.map {
+                if (it == oldCategory) trimmed else it
+            }
+            val updatedTransactions = state.transactions.map { t ->
+                if (t.type == TransactionType.EXPENSE && t.category == oldCategory) {
+                    t.copy(category = trimmed)
+                } else t
+            }
+            state.copy(
+                expenseCategories = updatedCategories,
+                transactions = updatedTransactions,
+                logs = listOf("Kategori Pengeluaran '$oldCategory' diubah menjadi '$trimmed'.") + state.logs
+            )
+        }
+    }
+
+    fun deleteExpenseCategory(categoryName: String) {
+        _uiState.update { state ->
+            val updatedCategories = state.expenseCategories.filter { it != categoryName }
+            state.copy(
+                expenseCategories = updatedCategories,
+                logs = listOf("Kategori Pengeluaran '$categoryName' berhasil dihapus.") + state.logs
             )
         }
     }

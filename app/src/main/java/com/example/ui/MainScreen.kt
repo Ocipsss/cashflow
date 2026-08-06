@@ -8,7 +8,11 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.OffsetMapping
+import androidx.compose.ui.text.input.TransformedText
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -1605,10 +1609,11 @@ fun EditTransactionDialog(
 
                 OutlinedTextField(
                     value = amountStr,
-                    onValueChange = { amountStr = it.filter { c -> c.isDigit() } },
+                    onValueChange = { amountStr = it.filter { c -> c.isDigit() }.take(15) },
                     label = { Text("Nominal (Rp)") },
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    visualTransformation = IndonesianThousandSeparatorVisualTransformation(),
                     modifier = Modifier
                         .fillMaxWidth()
                         .testTag("edit_tx_amount_input"),
@@ -2054,11 +2059,12 @@ fun AddEditWalletDialog(
 
                 OutlinedTextField(
                     value = initialBalanceStr,
-                    onValueChange = { initialBalanceStr = it.filter { char -> char.isDigit() } },
+                    onValueChange = { initialBalanceStr = it.filter { char -> char.isDigit() }.take(15) },
                     label = { Text("Saldo (Rp)") },
                     placeholder = { Text("Contoh: 1000000") },
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    visualTransformation = IndonesianThousandSeparatorVisualTransformation(),
                     modifier = Modifier
                         .fillMaxWidth()
                         .testTag("input_wallet_balance"),
@@ -2524,6 +2530,57 @@ fun DraggableFloatingActionButton(
     }
 }
 
+class IndonesianThousandSeparatorVisualTransformation : VisualTransformation {
+    override fun filter(text: AnnotatedString): TransformedText {
+        val rawText = text.text.filter { it.isDigit() }
+        if (rawText.isEmpty()) {
+            return TransformedText(text, OffsetMapping.Identity)
+        }
+
+        val number = rawText.toLongOrNull() ?: 0L
+        if (number == 0L) {
+            return TransformedText(text, OffsetMapping.Identity)
+        }
+
+        val formatter = java.text.NumberFormat.getNumberInstance(java.util.Locale("in", "ID"))
+        val formatted = formatter.format(number)
+
+        val offsetMapping = object : OffsetMapping {
+            override fun originalToTransformed(offset: Int): Int {
+                if (offset <= 0) return 0
+                val targetDigits = offset.coerceAtMost(rawText.length)
+                var digitsSeen = 0
+                for (i in formatted.indices) {
+                    if (formatted[i].isDigit()) {
+                        digitsSeen++
+                        if (digitsSeen == targetDigits) {
+                            if (i + 1 < formatted.length && !formatted[i + 1].isDigit()) {
+                                return i + 2
+                            }
+                            return i + 1
+                        }
+                    }
+                }
+                return formatted.length
+            }
+
+            override fun transformedToOriginal(offset: Int): Int {
+                if (offset <= 0) return 0
+                val safeOffset = offset.coerceAtMost(formatted.length)
+                var digitsCount = 0
+                for (i in 0 until safeOffset) {
+                    if (formatted[i].isDigit()) {
+                        digitsCount++
+                    }
+                }
+                return digitsCount.coerceAtMost(rawText.length)
+            }
+        }
+
+        return TransformedText(AnnotatedString(formatted), offsetMapping)
+    }
+}
+
 fun formatThousandSeparator(amount: Long): String {
     if (amount == 0L) return ""
     val formatter = java.text.NumberFormat.getNumberInstance(java.util.Locale("in", "ID"))
@@ -2721,6 +2778,7 @@ fun AddTransactionFullScreen(
 
     // Common fields
     var amountRaw by remember { mutableLongStateOf(0L) }
+    var amountInputStr by remember { mutableStateOf("") }
     var note by remember { mutableStateOf("") }
     val currentDateStr = remember { com.example.getCurrentFormattedDate() }
 
@@ -2825,15 +2883,17 @@ fun AddTransactionFullScreen(
 
                                         // 2. Input Nominal
                                         OutlinedTextField(
-                                            value = if (amountRaw == 0L) "" else formatThousandSeparator(amountRaw),
+                                            value = amountInputStr,
                                             onValueChange = { input ->
-                                                val digits = input.filter { it.isDigit() }
+                                                val digits = input.filter { it.isDigit() }.take(15)
+                                                amountInputStr = digits
                                                 amountRaw = digits.toLongOrNull() ?: 0L
                                             },
                                             label = { Text("Nominal Pemasukan (Rp) *") },
                                             placeholder = { Text("0") },
                                             singleLine = true,
                                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                            visualTransformation = IndonesianThousandSeparatorVisualTransformation(),
                                             modifier = Modifier.fillMaxWidth().testTag("input_income_amount"),
                                             shape = RoundedCornerShape(12.dp)
                                         )
@@ -2901,15 +2961,17 @@ fun AddTransactionFullScreen(
 
                                         // 2. Input Nominal
                                         OutlinedTextField(
-                                            value = if (amountRaw == 0L) "" else formatThousandSeparator(amountRaw),
+                                            value = amountInputStr,
                                             onValueChange = { input ->
-                                                val digits = input.filter { it.isDigit() }
+                                                val digits = input.filter { it.isDigit() }.take(15)
+                                                amountInputStr = digits
                                                 amountRaw = digits.toLongOrNull() ?: 0L
                                             },
                                             label = { Text("Nominal Pengeluaran (Rp) *") },
                                             placeholder = { Text("0") },
                                             singleLine = true,
                                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                            visualTransformation = IndonesianThousandSeparatorVisualTransformation(),
                                             modifier = Modifier.fillMaxWidth().testTag("input_expense_amount"),
                                             shape = RoundedCornerShape(12.dp)
                                         )
@@ -3004,15 +3066,17 @@ fun AddTransactionFullScreen(
                                     Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
                                         // 1. Input Nominal
                                         OutlinedTextField(
-                                            value = if (amountRaw == 0L) "" else formatThousandSeparator(amountRaw),
+                                            value = amountInputStr,
                                             onValueChange = { input ->
-                                                val digits = input.filter { it.isDigit() }
+                                                val digits = input.filter { it.isDigit() }.take(15)
+                                                amountInputStr = digits
                                                 amountRaw = digits.toLongOrNull() ?: 0L
                                             },
                                             label = { Text("Nominal Transfer (Rp) *") },
                                             placeholder = { Text("0") },
                                             singleLine = true,
                                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                            visualTransformation = IndonesianThousandSeparatorVisualTransformation(),
                                             modifier = Modifier.fillMaxWidth().testTag("input_transfer_amount"),
                                             shape = RoundedCornerShape(12.dp)
                                         )

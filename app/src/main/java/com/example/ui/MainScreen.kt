@@ -1,5 +1,10 @@
 package com.example.ui
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
+import android.content.Intent
+import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -7,7 +12,10 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.text.KeyboardOptions
+import java.util.Locale
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.OffsetMapping
@@ -59,6 +67,7 @@ fun MainScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     var showAddTransactionDialog by remember { mutableStateOf(false) }
+    var showWhatsAppReportDialog by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -94,6 +103,16 @@ fun MainScreen(
                     }
                 },
                 actions = {
+                    IconButton(
+                        onClick = { showWhatsAppReportDialog = true },
+                        modifier = Modifier.testTag("whatsapp_report_topbar_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Share,
+                            contentDescription = "Laporan WhatsApp",
+                            tint = Color(0xFF25D366)
+                        )
+                    }
                     IconButton(
                         onClick = { viewModel.toggleThemeOverride() },
                         modifier = Modifier.testTag("toggle_theme_button")
@@ -145,9 +164,9 @@ fun MainScreen(
                 .background(MaterialTheme.colorScheme.background)
         ) {
             when (uiState.selectedTab) {
-                0 -> HistoryTab(uiState = uiState, viewModel = viewModel)
-                1 -> DashboardTab(uiState = uiState, viewModel = viewModel)
-                2 -> SettingsTab(uiState = uiState, viewModel = viewModel)
+                0 -> HistoryTab(uiState = uiState, viewModel = viewModel, onOpenWhatsAppReport = { showWhatsAppReportDialog = true })
+                1 -> DashboardTab(uiState = uiState, viewModel = viewModel, onOpenWhatsAppReport = { showWhatsAppReportDialog = true })
+                2 -> SettingsTab(uiState = uiState, viewModel = viewModel, onOpenWhatsAppReport = { showWhatsAppReportDialog = true })
             }
 
             DraggableFloatingActionButton(
@@ -164,6 +183,13 @@ fun MainScreen(
                     onDismiss = { showAddTransactionDialog = false }
                 )
             }
+
+            if (showWhatsAppReportDialog) {
+                WhatsAppReportDialog(
+                    uiState = uiState,
+                    onDismiss = { showWhatsAppReportDialog = false }
+                )
+            }
         }
     }
 }
@@ -171,7 +197,8 @@ fun MainScreen(
 @Composable
 fun DashboardTab(
     uiState: MainUiState,
-    viewModel: MainViewModel
+    viewModel: MainViewModel,
+    onOpenWhatsAppReport: () -> Unit = {}
 ) {
     LazyColumn(
         modifier = Modifier
@@ -186,6 +213,84 @@ fun DashboardTab(
                 totalBalance = uiState.totalBalance,
                 walletCount = uiState.wallets.size
             )
+        }
+
+        // WhatsApp Report Banner Card
+        item {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onOpenWhatsAppReport() }
+                    .testTag("whatsapp_report_dashboard_card"),
+                shape = RoundedCornerShape(20.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f)
+                ),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.25f))
+            ) {
+                Row(
+                    modifier = Modifier
+                        .padding(14.dp)
+                        .fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(42.dp)
+                            .clip(CircleShape)
+                            .background(Color(0xFF25D366)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Share,
+                            contentDescription = "Kirim WhatsApp",
+                            tint = Color.White,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(2.dp)
+                    ) {
+                        Text(
+                            text = "Laporan Keuangan WhatsApp",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = "Kirim rekap saldo, transaksi & utang rapi ke WA",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+
+                    Surface(
+                        color = Color(0xFF25D366).copy(alpha = 0.15f),
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Text(
+                                text = "Kirim",
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF128C7E)
+                            )
+                            Icon(
+                                imageVector = Icons.Default.ChevronRight,
+                                contentDescription = "Buka",
+                                tint = Color(0xFF128C7E),
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                    }
+                }
+            }
         }
 
         // 2. Daftar Wallet (Card-Card Kecil)
@@ -1028,7 +1133,8 @@ fun TransactionItemRow(
 @Composable
 fun HistoryTab(
     uiState: MainUiState,
-    viewModel: MainViewModel
+    viewModel: MainViewModel,
+    onOpenWhatsAppReport: () -> Unit = {}
 ) {
     var txToEdit by remember { mutableStateOf<TransactionItem?>(null) }
     var txToDelete by remember { mutableStateOf<TransactionItem?>(null) }
@@ -1056,17 +1162,43 @@ fun HistoryTab(
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         item {
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(
-                    text = "Semua Riwayat Transaksi",
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold
-                )
-                Text(
-                    text = "Total ${uiState.transactions.size} transaksi tercatat di seluruh wallet",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Text(
+                        text = "Semua Riwayat Transaksi",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = "Total ${uiState.transactions.size} transaksi tercatat di seluruh wallet",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+
+                FilledTonalButton(
+                    onClick = { onOpenWhatsAppReport() },
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.filledTonalButtonColors(
+                        containerColor = Color(0xFF25D366).copy(alpha = 0.15f),
+                        contentColor = Color(0xFF128C7E)
+                    )
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Share,
+                        contentDescription = "Share WA",
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("Laporan WA", style = MaterialTheme.typography.labelMedium)
+                }
             }
         }
 
@@ -1217,7 +1349,8 @@ fun HistoryTab(
 @Composable
 fun SettingsTab(
     uiState: MainUiState,
-    viewModel: MainViewModel
+    viewModel: MainViewModel,
+    onOpenWhatsAppReport: () -> Unit = {}
 ) {
     var showAddWalletDialog by remember { mutableStateOf(false) }
     var walletToEdit by remember { mutableStateOf<Wallet?>(null) }
@@ -1440,6 +1573,80 @@ fun SettingsTab(
                 onEditExpenseCategory = { cat -> categoryToEdit = Pair(cat, false) },
                 onDeleteExpenseCategory = { cat -> categoryToDelete = Pair(cat, false) }
             )
+        }
+
+        // Section: Laporan Keuangan WhatsApp
+        item {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("whatsapp_report_settings_card"),
+                shape = RoundedCornerShape(20.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surface
+                ),
+                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+            ) {
+                Column(
+                    modifier = Modifier
+                        .padding(20.dp)
+                        .fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(14.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(40.dp)
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(Color(0xFF25D366)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Share,
+                                contentDescription = "WhatsApp Report",
+                                tint = Color.White
+                            )
+                        }
+                        Column {
+                            Text(
+                                text = "Laporan Plain Text WhatsApp",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                text = "Ekspor rekap keuangan terstruktur untuk pesan WA",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+
+                    Button(
+                        onClick = { onOpenWhatsAppReport() },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("open_whatsapp_report_button"),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color(0xFF25D366),
+                            contentColor = Color.White
+                        ),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Send,
+                            contentDescription = "Buat Laporan WA",
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Buat & Kirim Laporan WA", fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
         }
 
         // Section: Pengaturan Database (Reset, Backup, Restore)
@@ -3253,6 +3460,497 @@ fun AddTransactionFullScreen(
             )
         }
         null -> {}
+    }
+}
+
+// ==================== WHATSAPP REPORT FEATURE ====================
+
+enum class WhatsAppReportType(val displayName: String) {
+    FULL_SUMMARY("📊 Ringkasan Lengkap"),
+    WALLETS_ONLY("💰 Saldo Dompet"),
+    TRANSACTIONS_ONLY("📝 Riwayat Transaksi"),
+    DEBTS_RECEIVABLES_ONLY("⚠️ Utang & Piutang")
+}
+
+enum class WhatsAppTimeframe(val displayName: String) {
+    ALL("Semua Waktu"),
+    THIS_MONTH("Bulan Ini"),
+    TODAY("Hari Ini")
+}
+
+fun generateWhatsAppReportText(
+    uiState: MainUiState,
+    reportType: WhatsAppReportType,
+    timeframe: WhatsAppTimeframe,
+    includeWallets: Boolean,
+    includeTransactions: Boolean,
+    maxTransactionsCount: Int,
+    includeDebts: Boolean
+): String {
+    val currentDate = com.example.getCurrentFormattedDate()
+    val totalDebtAmount = uiState.debts.sumOf { it.amount }
+    val totalReceivableAmount = uiState.receivables.sumOf { it.amount }
+    val netWorth = uiState.totalBalance + totalReceivableAmount - totalDebtAmount
+
+    val sb = StringBuilder()
+
+    // Header
+    sb.append("📊 *LAPORAN KEUANGAN DOMPETKU*\n")
+    sb.append("📅 *Tanggal:* $currentDate\n")
+    sb.append("========================================\n\n")
+
+    // Ringkasan Umum
+    sb.append("💰 *RINGKASAN TOTAL*\n")
+    sb.append("• *Total Saldo Dompet:* ${formatRupiah(uiState.totalBalance)}\n")
+    if (totalDebtAmount > 0) {
+        sb.append("• *Total Utang:* ${formatRupiah(totalDebtAmount)}\n")
+    }
+    if (totalReceivableAmount > 0) {
+        sb.append("• *Total Piutang:* ${formatRupiah(totalReceivableAmount)}\n")
+    }
+    sb.append("• *Kekayaan Bersih (Net Worth):* *${formatRupiah(netWorth)}*\n\n")
+
+    // Section 2: Rincian Dompet
+    if (includeWallets && uiState.wallets.isNotEmpty()) {
+        sb.append("----------------------------------------\n")
+        sb.append("💳 *RINCIAN SALDO DOMPET (${uiState.wallets.size} Dompet)*\n")
+        uiState.wallets.forEach { w ->
+            val accInfo = if (w.accountNumber.isNotBlank()) " _(${w.accountNumber})_" else ""
+            sb.append("• *${w.name}* : ${formatRupiah(w.balance)} _(${w.type})_$accInfo\n")
+        }
+        sb.append("\n")
+    }
+
+    // Filter transactions
+    val todayPrefix = java.text.SimpleDateFormat("dd MMM yyyy", Locale("id", "ID")).format(java.util.Date())
+    val monthSuffix = java.text.SimpleDateFormat("MMM yyyy", Locale("id", "ID")).format(java.util.Date())
+
+    val filteredTxList = uiState.transactions.filter { tx ->
+        when (timeframe) {
+            WhatsAppTimeframe.ALL -> true
+            WhatsAppTimeframe.TODAY -> tx.date.contains(todayPrefix, ignoreCase = true)
+            WhatsAppTimeframe.THIS_MONTH -> tx.date.contains(monthSuffix, ignoreCase = true)
+        }
+    }
+
+    // Section 3: Transaksi
+    if (includeTransactions && filteredTxList.isNotEmpty()) {
+        sb.append("----------------------------------------\n")
+        val displayTxs = if (maxTransactionsCount > 0) filteredTxList.take(maxTransactionsCount) else filteredTxList
+        sb.append("📝 *RIWAYAT TRANSAKSI (${displayTxs.size} Transaksi - ${timeframe.displayName})*\n")
+
+        displayTxs.forEach { tx ->
+            val typeTag = when (tx.type) {
+                TransactionType.INCOME -> "➕ [PEMASUKAN]"
+                TransactionType.EXPENSE -> "➖ [PENGELUARAN]"
+                TransactionType.TRANSFER -> "🔄 [TRANSFER]"
+            }
+            sb.append("$typeTag *${tx.title}*\n")
+            sb.append("  ├ Nominal : *${formatRupiah(tx.amount)}*\n")
+            sb.append("  ├ Dompet  : ${tx.walletName}\n")
+            if (tx.category.isNotBlank()) {
+                sb.append("  ├ Kategori: ${tx.category}\n")
+            }
+            if (tx.note.isNotBlank()) {
+                sb.append("  ├ Catatan : _${tx.note}_\n")
+            }
+            sb.append("  └ Tanggal : ${tx.date}\n\n")
+        }
+    }
+
+    // Section 4: Utang & Piutang
+    if (includeDebts && (uiState.debts.isNotEmpty() || uiState.receivables.isNotEmpty())) {
+        sb.append("----------------------------------------\n")
+        sb.append("⚠️ *DAFTAR UTANG & PIUTANG*\n\n")
+
+        if (uiState.debts.isNotEmpty()) {
+            sb.append("🔴 *Utang Saya:* ${formatRupiah(totalDebtAmount)}\n")
+            uiState.debts.forEach { d ->
+                val due = if (d.dueDate.isNotBlank()) " _(Tempo: ${d.dueDate})_" else ""
+                sb.append("• *${d.title}* : ${formatRupiah(d.amount)}$due\n")
+            }
+            sb.append("\n")
+        }
+
+        if (uiState.receivables.isNotEmpty()) {
+            sb.append("🟢 *Piutang (Orang Utang ke Saya):* ${formatRupiah(totalReceivableAmount)}\n")
+            uiState.receivables.forEach { r ->
+                val due = if (r.dueDate.isNotBlank()) " _(Tempo: ${r.dueDate})_" else ""
+                sb.append("• *${r.title}* : ${formatRupiah(r.amount)}$due\n")
+            }
+            sb.append("\n")
+        }
+    }
+
+    sb.append("========================================\n")
+    sb.append("_Dikirim via Aplikasi Catatan Keuangan_")
+
+    return sb.toString()
+}
+
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@Composable
+fun WhatsAppReportDialog(
+    uiState: MainUiState,
+    onDismiss: () -> Unit
+) {
+    val context = LocalContext.current
+    var selectedReportType by remember { mutableStateOf(WhatsAppReportType.FULL_SUMMARY) }
+    var selectedTimeframe by remember { mutableStateOf(WhatsAppTimeframe.ALL) }
+
+    var includeWallets by remember { mutableStateOf(true) }
+    var includeTransactions by remember { mutableStateOf(true) }
+    var maxTxCount by remember { mutableIntStateOf(5) }
+    var includeDebts by remember { mutableStateOf(true) }
+
+    val generatedText = remember(
+        uiState, selectedReportType, selectedTimeframe,
+        includeWallets, includeTransactions, maxTxCount, includeDebts
+    ) {
+        generateWhatsAppReportText(
+            uiState = uiState,
+            reportType = selectedReportType,
+            timeframe = selectedTimeframe,
+            includeWallets = includeWallets,
+            includeTransactions = includeTransactions,
+            maxTransactionsCount = maxTxCount,
+            includeDebts = includeDebts
+        )
+    }
+
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth(0.92f)
+                .fillMaxHeight(0.92f)
+                .testTag("whatsapp_report_dialog"),
+            shape = RoundedCornerShape(24.dp),
+            color = MaterialTheme.colorScheme.surface,
+            tonalElevation = 6.dp
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(20.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                // Header
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(40.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(Color(0xFF25D366)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Share,
+                                contentDescription = "WhatsApp Report",
+                                tint = Color.White,
+                                modifier = Modifier.size(22.dp)
+                            )
+                        }
+                        Column {
+                            Text(
+                                text = "Laporan WhatsApp",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                text = "Format Plain Text Terstruktur & Rapi",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+
+                    IconButton(onClick = onDismiss) {
+                        Icon(Icons.Default.Close, contentDescription = "Tutup")
+                    }
+                }
+
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+
+                // Scrollable Content
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    // 1. Tipe Laporan (Choice Chips)
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text(
+                            text = "Jenis Laporan:",
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.Bold
+                        )
+                        FlowRow(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            WhatsAppReportType.values().forEach { type ->
+                                FilterChip(
+                                    selected = selectedReportType == type,
+                                    onClick = {
+                                        selectedReportType = type
+                                        when (type) {
+                                            WhatsAppReportType.FULL_SUMMARY -> {
+                                                includeWallets = true
+                                                includeTransactions = true
+                                                includeDebts = true
+                                            }
+                                            WhatsAppReportType.WALLETS_ONLY -> {
+                                                includeWallets = true
+                                                includeTransactions = false
+                                                includeDebts = false
+                                            }
+                                            WhatsAppReportType.TRANSACTIONS_ONLY -> {
+                                                includeWallets = false
+                                                includeTransactions = true
+                                                includeDebts = false
+                                            }
+                                            WhatsAppReportType.DEBTS_RECEIVABLES_ONLY -> {
+                                                includeWallets = false
+                                                includeTransactions = false
+                                                includeDebts = true
+                                            }
+                                        }
+                                    },
+                                    label = { Text(type.displayName) },
+                                    colors = FilterChipDefaults.filterChipColors(
+                                        selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                                        selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer
+                                    )
+                                )
+                            }
+                        }
+                    }
+
+                    // 2. Filter Periode
+                    if (includeTransactions) {
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text(
+                                text = "Periode Transaksi:",
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                WhatsAppTimeframe.values().forEach { tf ->
+                                    FilterChip(
+                                        selected = selectedTimeframe == tf,
+                                        onClick = { selectedTimeframe = tf },
+                                        label = { Text(tf.displayName) }
+                                    )
+                                }
+                            }
+
+                            // Batas Jumlah Transaksi
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "Maks. Transaksi:",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    fontWeight = FontWeight.Medium
+                                )
+                                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    listOf(3, 5, 10, 0).forEach { count ->
+                                        val label = if (count == 0) "Semua" else "$count"
+                                        FilterChip(
+                                            selected = maxTxCount == count,
+                                            onClick = { maxTxCount = count },
+                                            label = { Text(label, style = MaterialTheme.typography.labelSmall) }
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // 3. Opsi Tambahan Checkboxes
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
+                        ),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(2.dp)
+                        ) {
+                            Text(
+                                text = "Komponen Dalam Laporan:",
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Checkbox(
+                                    checked = includeWallets,
+                                    onCheckedChange = { includeWallets = it }
+                                )
+                                Text("Rincian Dompet (${uiState.wallets.size})", style = MaterialTheme.typography.bodyMedium)
+                            }
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Checkbox(
+                                    checked = includeTransactions,
+                                    onCheckedChange = { includeTransactions = it }
+                                )
+                                Text("Riwayat Transaksi (${uiState.transactions.size})", style = MaterialTheme.typography.bodyMedium)
+                            }
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Checkbox(
+                                    checked = includeDebts,
+                                    onCheckedChange = { includeDebts = it }
+                                )
+                                Text("Utang & Piutang (${uiState.debts.size + uiState.receivables.size})", style = MaterialTheme.typography.bodyMedium)
+                            }
+                        }
+                    }
+
+                    // 4. Live Preview Box (Plain Text WhatsApp Format)
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Pratinjau Plain Text WhatsApp:",
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                text = "${generatedText.length} Karakter",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = CardDefaults.cardColors(
+                                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                            ),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+                        ) {
+                            Text(
+                                text = generatedText,
+                                style = MaterialTheme.typography.bodySmall.copy(
+                                    fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                                    lineHeight = 17.sp
+                                ),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(14.dp)
+                            )
+                        }
+                    }
+                }
+
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+
+                // Bottom Action Buttons
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    OutlinedButton(
+                        onClick = {
+                            copyTextToClipboard(context, generatedText)
+                        },
+                        modifier = Modifier
+                            .weight(1f)
+                            .testTag("copy_report_text_button"),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.ContentCopy,
+                            contentDescription = "Salin Teks",
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Salin Teks")
+                    }
+
+                    Button(
+                        onClick = {
+                            shareTextToWhatsApp(context, generatedText)
+                        },
+                        modifier = Modifier
+                            .weight(1f)
+                            .testTag("send_whatsapp_report_button"),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color(0xFF25D366),
+                            contentColor = Color.White
+                        ),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Send,
+                            contentDescription = "Kirim WhatsApp",
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Kirim WA", fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        }
+    }
+}
+
+fun copyTextToClipboard(context: Context, text: String) {
+    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+    val clip = ClipData.newPlainText("Laporan Keuangan", text)
+    clipboard.setPrimaryClip(clip)
+    Toast.makeText(context, "Laporan disalin ke clipboard!", Toast.LENGTH_SHORT).show()
+}
+
+fun shareTextToWhatsApp(context: Context, text: String) {
+    val sendIntent = Intent().apply {
+        action = Intent.ACTION_SEND
+        putExtra(Intent.EXTRA_TEXT, text)
+        type = "text/plain"
+        setPackage("com.whatsapp")
+    }
+    try {
+        context.startActivity(sendIntent)
+    } catch (e: Exception) {
+        val chooserIntent = Intent.createChooser(
+            Intent().apply {
+                action = Intent.ACTION_SEND
+                putExtra(Intent.EXTRA_TEXT, text)
+                type = "text/plain"
+            },
+            "Kirim Laporan via"
+        )
+        context.startActivity(chooserIntent)
     }
 }
 
